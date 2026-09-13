@@ -136,11 +136,11 @@ schemaと移行
 アイコン
 
 - [x] `icon.svg` / `icon-maskable.svg` を原本に、32 / 180 / 192 / 512 と maskable 192 / 512 を生成
-- [x] ヘッダーが同じ `icon.svg` を表示（CSSでの描き直しを廃止）
-- [x] maskableの図形が安全領域（中心から半径40%）に収まる。実測 149/512px ≦ 205/512px
+- [x] v0.5のタイトル左にあった「円環＋右上の点」をブランドの正とし、ヘッダーと外部アイコンの形を統一
+- [x] maskableの図形が安全領域（中心から半径40%）に収まる
 - [x] 円形マスク・角丸マスクでの見え方を目視確認（docs/screenshots/icons.png）
-- [x] 32pxでもストップウォッチと判別できる。文字なし
-- [x] 暗い背景でもブランド固定配色で識別できる
+- [x] 32pxでも円環と右上の点が潰れず識別できる。文字なし
+- [x] favicon・インストール用画像はライトテーマのブランド配色で統一
 - [x] `index.html`・manifest・Service Workerの事前キャッシュを更新
 - [x] manifestの `name` / `short_name` / Appleタイトルを「Multi Stopwatch」に統一
 - [x] 参照するすべてのアイコンURLが200（favicon・32px・Apple・manifest内の全件）

@@ -1,11 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Multi Stopwatch">
-  <!-- Maskable master: the background fills the whole square and the mark stays inside the
-       80% safe circle (radius 25.6 from the centre), so any OS mask can crop it safely. -->
-  <rect width="64" height="64" fill="#4a5a92"/>
-  <g fill="none" stroke="#ffffff" stroke-width="4.2" stroke-linecap="round">
-    <circle cx="32" cy="36" r="12.5"/>
-    <path d="M27.5 16h9"/>
-    <path d="M32 16v5"/>
-    <path d="M32 36v-7"/>
-  </g>
+  <!-- Maskable master: the background fills the canvas while the original focus-ring mark
+       remains comfortably inside the 80% safe circle. -->
+  <rect width="64" height="64" fill="#dde1f9"/>
+  <circle cx="32" cy="32" r="11.6" fill="none" stroke="#323c6b" stroke-width="4"/>
+  <circle cx="40" cy="24" r="3.2" fill="#323c6b"/>
 </svg>

@@ -1,12 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Multi Stopwatch">
-  <!-- Vector master. The rounded badge is the transparent-corner icon used for the favicon,
-       the app header and manifest purpose "any". Brand colours are fixed so the mark stays
-       recognisable on a light or a dark background. -->
-  <rect width="64" height="64" rx="14" fill="#4a5a92"/>
-  <g fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round">
-    <circle cx="32" cy="37" r="15"/>
-    <path d="M26 12h12"/>
-    <path d="M32 12v6"/>
-    <path d="M32 37v-8"/>
-  </g>
+  <!-- Vector master based on the original title mark: a focus ring and one active point.
+       The geometry is the 40px in-app mark scaled to 64px. -->
+  <rect width="64" height="64" rx="19.2" fill="#dde1f9"/>
+  <circle cx="32" cy="32" r="11.6" fill="none" stroke="#323c6b" stroke-width="4"/>
+  <circle cx="40" cy="24" r="3.2" fill="#323c6b"/>
 </svg>

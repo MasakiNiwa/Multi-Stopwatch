@@ -83,8 +83,12 @@ main { width: min(760px, 100%); margin: auto; padding: 24px max(16px, env(safe-a
 
 /* Header */
 .intro { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-/* The same SVG the browser and the home screen use, so the shapes cannot drift apart. */
-.brand-mark { flex: none; width: 40px; height: 40px; border-radius: var(--r-m); }
+/* The original focus-ring mark is the brand source of truth. Its colours follow the selected
+   app theme here; favicon and install assets use the same geometry with the light brand pair. */
+.brand-mark { position: relative; width: 40px; height: 40px; flex: none; border-radius: var(--r-m); display: grid; place-items: center; background: var(--primary-container); }
+.brand-mark::before, .brand-mark span { content: ""; display: block; border: 2.5px solid var(--on-primary-container); border-radius: 50%; }
+.brand-mark::before { width: 17px; height: 17px; }
+.brand-mark span { position: absolute; width: 4px; height: 4px; background: var(--on-primary-container); border-width: 0; transform: translate(5px,-5px); }
 .brand-text { flex: 1 1 auto; min-width: 0; }
 .eyebrow { margin: 0 0 2px; color: var(--on-surface-variant); font-size: 11px; line-height: 1; font-weight: 600; letter-spacing: .14em; }
 h1 { margin: 0; font-size: clamp(20px,5vw,24px); line-height: 1.2; letter-spacing: 0; font-weight: 600; }
