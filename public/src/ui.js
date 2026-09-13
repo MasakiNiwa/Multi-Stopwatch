@@ -336,7 +336,17 @@ export function editorOpen() { return $('#editor').open; }
 export function focusRow(id, action = 'toggle') {
   requestAnimationFrame(() => document.querySelector(`.card[data-id="${id}"] [data-action="${action}"]`)?.focus());
 }
-export function showTheme(mode) {
-  const input = document.querySelector(`#theme input[value="${mode}"]`);
-  if (input) input.checked = true;
+// The button shows what pressing it will do, and says so for assistive technology.
+export function showThemeButton(mode) {
+  const next = mode === 'dark' ? 'ライト' : 'ダーク';
+  const button = $('#theme-toggle');
+  button.setAttribute('aria-label', `${next}テーマに切り替える`);
+  button.title = `${next}テーマに切り替える`;
 }
+export function openHelp() {
+  if ($('#help').open) return;
+  $('#help').showModal();
+  $('#help').scrollTop = 0;
+}
+export function closeHelp() { $('#help').close(); }
+export function helpOpen() { return $('#help').open; }

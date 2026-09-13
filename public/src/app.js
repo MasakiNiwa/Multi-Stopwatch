@@ -23,36 +23,45 @@ try {
   state = emptyState();
   readOnly = true;
   ui.notice('保存データを読み込めません。元データの上書きを防ぐため編集を停止しました。「バックアップを保存」で元データを取り出せます。', { sticky: true });
-  $('.help').open = true; // The recovery button must not stay behind a closed section.
+  // The recovery button lives in the help dialog, so open it rather than leave the notice pointing nowhere.
+  addEventListener('DOMContentLoaded', () => ui.openHelp(), { once: true });
 }
 
 /* ---------- theme ---------- */
 // Preferences are stored under their own key; the stopwatch records keep schema v1 untouched.
 let prefs = loadPrefs(localStorage);
 const THEME_COLORS = { light: '#fbfaff', dark: '#121316' }; // --surface of each scheme.
-const THEME_LABELS = { system: '端末に合わせる', light: 'ライト', dark: 'ダーク' };
+const THEME_LABELS = { light: 'ライト', dark: 'ダーク' };
 const systemDark = matchMedia('(prefers-color-scheme: dark)');
+// 'system' follows the device until the button is pressed; after that the choice is explicit.
+const effectiveTheme = () => (prefs.theme === 'system' ? (systemDark.matches ? 'dark' : 'light') : prefs.theme);
 // One managed meta replaces the media based pair, so an explicit choice also colours the browser UI.
 const themeMeta = document.createElement('meta');
 themeMeta.name = 'theme-color';
 document.querySelectorAll('meta[name="theme-color"]').forEach(meta => meta.remove());
 document.head.append(themeMeta);
 function applyTheme() {
-  const mode = prefs.theme === 'system' ? (systemDark.matches ? 'dark' : 'light') : prefs.theme;
+  const mode = effectiveTheme();
   document.documentElement.dataset.theme = mode;
   themeMeta.content = THEME_COLORS[mode];
-  ui.showTheme(prefs.theme);
+  ui.showThemeButton(mode);
 }
 systemDark.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
-$('#theme').addEventListener('change', event => {
-  const theme = event.target.value;
+// One button: it always switches to the opposite of what is on screen, and records that choice.
+$('#theme-toggle').onclick = () => {
+  const theme = effectiveTheme() === 'dark' ? 'light' : 'dark';
   if (!THEMES.includes(theme)) return;
   prefs = { ...prefs, theme };
   applyTheme();
-  try { savePrefs(localStorage, prefs); ui.announce(`テーマを「${THEME_LABELS[theme]}」にしました`); }
+  ui.announce(`${THEME_LABELS[theme]}テーマに切り替えました`);
+  try { savePrefs(localStorage, prefs); }
   catch { ui.notice('テーマの設定を保存できませんでした。この画面の表示だけ切り替えています。'); }
-});
+};
 applyTheme();
+
+/* ---------- help ---------- */
+$('#help-open').onclick = () => ui.openHelp();
+$('#help-close').onclick = () => ui.closeHelp();
 
 /* ---------- rendering ---------- */
 function render() {
@@ -415,6 +424,7 @@ window.addEventListener('storage', event => {
     if (ui.editorOpen()) ui.closeEditor();
     if (ui.sheetOpen()) ui.closeSheet();
     if (ui.groupsOpen()) ui.closeGroups();
+    if (ui.helpOpen()) ui.closeHelp();
     render();
   } catch {
     readOnly = true;

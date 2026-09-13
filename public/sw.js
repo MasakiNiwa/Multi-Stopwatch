@@ -1,8 +1,14 @@
 // Bump VERSION for every deployed shell change. No forced takeover during timing.
-const VERSION = 'v0.5.0';
+const VERSION = 'v0.6.0';
 const PREFIX = `multi-stopwatch:${self.registration.scope}:`;
 const CACHE = PREFIX + VERSION;
-const ASSETS = ['./', './index.html', './style.css', './src/app.js', './src/ui.js', './src/model.js', './src/storage.js', './src/stats.js', './src/sorting.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
+const ASSETS = [
+  './', './index.html', './style.css',
+  './src/app.js', './src/ui.js', './src/model.js', './src/storage.js', './src/stats.js', './src/sorting.js',
+  './manifest.webmanifest',
+  './icons/icon.svg', './icons/icon-maskable.svg', './icons/icon-32-v6.png', './icons/apple-touch-icon-180-v6.png',
+  './icons/icon-192-v6.png', './icons/icon-512-v6.png', './icons/icon-maskable-192-v6.png', './icons/icon-maskable-512-v6.png',
+];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS))));
 self.addEventListener('activate', event => event.waitUntil((async () => {
   for (const key of await caches.keys()) if (key.startsWith(PREFIX) && key !== CACHE) await caches.delete(key);
