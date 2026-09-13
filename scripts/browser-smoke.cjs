@@ -17,6 +17,10 @@ async function addTimer(page, name, { group, ...fill } = {}) {
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.locator(`.card:has(.name:text-is(${JSON.stringify(name)}))`).waitFor();
 }
+async function openSheet(page, name) {
+  await page.getByRole('button', { name: `${name}の詳細と操作` }).click();
+  await page.locator('#sheet[open]').waitFor();
+}
 // A record written by the shipped v0.4 app, used to prove the migration on real data.
 const v1Record = {
   version: 1,
@@ -81,11 +85,61 @@ const v1Record = {
   await page.screenshot({ path: 'test-results/visual/mobile-stats.png', fullPage: true });
   await page.locator('#tab-timers').click();
 
+  // Number entry: a focused box is fully selected, so typing replaces the value instead of appending.
+  await openSheet(page, '個人開発');
+  await page.getByRole('button', { name: '編集', exact: true }).click();
+  await page.locator('#editor[open]').waitFor();
+  await page.locator('#edit-form [name=targetH]').focus();
+  await page.keyboard.type('2');
+  assert.equal(await page.locator('#edit-form [name=targetH]').inputValue(), '2', '0を置換できること');
+  // A preset fills both boxes, and fine tuning afterwards releases the preset.
+  await page.getByRole('button', { name: '30分', exact: true }).click();
+  assert.equal(await page.locator('#edit-form [name=targetH]').inputValue(), '0');
+  assert.equal(await page.locator('#edit-form [name=targetM]').inputValue(), '30');
+  assert.equal(await page.getAttribute('#target-presets [data-preset="30"]', 'aria-pressed'), 'true');
+  await page.locator('#edit-form [name=targetM]').focus();
+  await page.keyboard.type('45');
+  assert.equal(await page.getAttribute('#target-presets [data-preset="30"]', 'aria-pressed'), 'false');
+  // The correction is folded away by default, with the current value visible on the summary.
+  assert.equal(await page.evaluate(() => document.querySelector('#elapsed-fields').open), false);
+  assert.equal(await page.locator('#elapsed-current').textContent(), '現在 00:00:00');
+  await page.locator('#elapsed-fields > summary').click();
+  await page.locator('#edit-form [name=elapsedH]').focus();
+  await page.keyboard.type('3');
+  // An emptied box is treated as zero on save rather than refused while typing.
+  await page.locator('#edit-form [name=elapsedM]').fill('');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await page.locator('#editor[open]').waitFor({ state: 'detached' }).catch(() => {});
+  assert.equal(await page.locator('.card:has(.name:text-is("個人開発")) .time .sr-only').textContent(), '3時間0分0秒');
+  assert.equal(await page.locator('.card:has(.name:text-is("個人開発")) .meta-note').textContent(), '目標達成 ✓', '3時間は45分の目標を超える');
+
   // Bulk sort applies to every timer and is saved.
   await page.locator('#sort').selectOption('name-asc');
   await page.locator('#apply-sort').click();
   const sorted = await names(page);
   assert.deepEqual(sorted, ['個人開発', '資格の勉強', '読書']);
+
+  // The statistics update in place instead of rebuilding their rows, and keep step with the hero.
+  await page.locator('#tab-stats').click();
+  await page.locator('#panel-stats:not([hidden])').waitFor();
+  await page.evaluate(() => {
+    window.__added = 0;
+    for (const id of ['stat-ranking', 'stat-groups']) {
+      new MutationObserver(records => { for (const record of records) window.__added += record.addedNodes.length; })
+        .observe(document.querySelector(`#${id}`), { childList: true });
+    }
+  });
+  const before = await page.locator('#stat-total').textContent();
+  await page.waitForTimeout(2100);
+  const added = await page.evaluate(() => window.__added);
+  assert.equal(added, 0, `statistics recreated ${added} rows in 2s; rows should be updated in place`);
+  assert.notEqual(await page.locator('#stat-total').textContent(), before, '稼働中は1秒以内に更新される');
+  // Both views of the same number must agree at the moment they are read.
+  assert.deepEqual(...await page.evaluate(() => {
+    const panel = document.querySelector('#stat-total').textContent;
+    return [panel, document.querySelector('#total').textContent];
+  }).then(([panel, hero]) => [[panel], [hero]]));
+  await page.locator('#tab-timers').click();
 
   // Compact list and tap targets survive the new controls.
   for (const name of ['英語のリスニング', '筋トレ', 'ブログ執筆', '数学', 'ピアノの練習', '家事']) await addTimer(page, name);
@@ -117,7 +171,20 @@ const v1Record = {
   // Theme choice applies at once and survives a reload, together with groups and order.
   await page.getByRole('radio', { name: 'ダーク' }).check();
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark');
-  assert.equal(await page.getAttribute('meta[name=theme-color]', 'content'), '#0b0e14');
+  assert.equal(await page.getAttribute('meta[name=theme-color]', 'content'), '#121316');
+
+  // The list's action bar does not sit over the statistics while they are being read.
+  await page.locator('#tab-stats').click();
+  await page.locator('#panel-stats:not([hidden])').waitFor();
+  assert.equal(await page.evaluate(() => {
+    const bar = document.querySelector('.toolbar');
+    if (getComputedStyle(bar).display === 'none') return true;
+    const barBox = bar.getBoundingClientRect();
+    return [...document.querySelectorAll('#stat-ranking .stat-item')]
+      .every(row => { const box = row.getBoundingClientRect(); return box.bottom <= barBox.top || box.top >= barBox.bottom; });
+  }), true, '統計タブで固定バーがランキングに重ならないこと');
+  await page.screenshot({ path: 'test-results/visual/mobile-stats-dark.png', fullPage: true });
+  await page.locator('#tab-timers').click();
   await page.screenshot({ path: 'test-results/visual/mobile-dark.png', fullPage: true });
 
   // Landscape and desktop show the list and the statistics side by side.

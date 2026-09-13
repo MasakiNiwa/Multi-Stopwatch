@@ -1,15 +1,17 @@
 // Wiring: owns the state, applies domain functions, persists, then asks the UI to redraw.
 import {
-  createTimer, elapsed, start, stop, reset, setElapsed, move, matches, running, format, emptyState,
+  createTimer, elapsed, start, stop, reset, setElapsed, move, matches, running, total, format, emptyState,
   addGroup, renameGroup, removeGroup, groupName, groupNameError, MAX_TIMERS,
 } from './model.js';
 import { load, save, readState, KEY, loadPrefs, savePrefs, THEMES } from './storage.js';
-import { summarize } from './stats.js';
+import { summarize, statsTick } from './stats.js';
 import { applySort, sortLabel } from './sorting.js';
 import * as ui from './ui.js';
 
 const $ = selector => document.querySelector(selector);
 let state, shown = [], groups = new Map(), query = '', draft = null, editing = null, sheetId = null, readOnly = false, ownsLock = false;
+// Bumped on every saved change so the statistics can redraw immediately instead of waiting a second.
+let revision = 0, statsMarker = null;
 const editable = () => !readOnly && ownsLock;
 const reorderable = () => query.trim() === '';
 const find = id => state.timers.find(t => t.id === id);
@@ -27,7 +29,7 @@ try {
 /* ---------- theme ---------- */
 // Preferences are stored under their own key; the stopwatch records keep schema v1 untouched.
 let prefs = loadPrefs(localStorage);
-const THEME_COLORS = { light: '#f3f5f9', dark: '#0b0e14' };
+const THEME_COLORS = { light: '#fbfaff', dark: '#121316' }; // --surface of each scheme.
 const THEME_LABELS = { system: '端末に合わせる', light: 'ライト', dark: 'ダーク' };
 const systemDark = matchMedia('(prefers-color-scheme: dark)');
 // One managed meta replaces the media based pair, so an explicit choice also colours the browser UI.
@@ -69,16 +71,26 @@ function render() {
   if (ui.groupsOpen()) ui.renderGroupList(state);
   tick();
 }
-function tick() {
+// Showing the panel, rotating the screen or reading a change from another window redraws at once.
+const refresh = () => tick(true);
+function tick(force = false) {
   if (document.hidden) return;
   const now = Date.now();
   ui.paint(shown, state.timers, now, groups);
-  ui.paintStats(summarize(state, now));
+  if (ui.statsVisible()) {
+    // Throttle on the second the headline total will show, so the panel never lags the hero.
+    const second = Math.floor(total(state.timers, now) / 1000);
+    const step = statsTick(statsMarker, { revision, second, running: running(state.timers), force });
+    statsMarker = step.marker;
+    if (step.changed) ui.paintStats(summarize(state, now));
+  } else {
+    statsMarker = null; // A hidden panel holds stale content; redraw it when it comes back.
+  }
   if (sheetId) ui.paintSheet(find(sheetId), now, sheetPosition());
 }
 function commit(next) {
   if (!editable()) return false;
-  try { save(localStorage, next); state = next; render(); return true; }
+  try { save(localStorage, next); state = next; revision += 1; render(); return true; }
   catch { ui.notice('保存できませんでした。操作は反映していません。空き容量やブラウザの保存設定を確認してください。', { sticky: true }); return false; }
 }
 const update = (id, fn) => commit({ ...state, timers: state.timers.map(t => (t.id === id ? fn(t) : t)) });
@@ -235,6 +247,18 @@ function openEditorFor(timer) {
   ui.fillGroupSelect(state, timer.groupId);
   ui.openEditor({ ...timer, elapsedMs: editing.snapshotMs }, false);
 }
+ui.selectOnFocus($('#editor'));
+$('#target-presets').onclick = event => {
+  const button = event.target.closest('button[data-preset]');
+  if (button) ui.setTarget(Number(button.dataset.preset));
+};
+$('#edit-form').addEventListener('input', event => {
+  // Fine tuning after a preset keeps the chips honest about what is actually set.
+  if (event.target.name === 'targetH' || event.target.name === 'targetM') {
+    const f = $('#edit-form').elements;
+    ui.markPresets((Number(f.targetH.value || 0) * 60 + Number(f.targetM.value || 0)) * 60000);
+  }
+});
 $('#cancel').onclick = () => ui.closeEditor();
 $('#editor').addEventListener('close', () => { draft = null; editing = null; });
 $('#edit-form').onsubmit = event => {
@@ -344,7 +368,7 @@ const wide = matchMedia('(orientation: landscape) and (min-width: 800px)');
 let activeTab = 'tab-timers';
 function layout() {
   ui.applyLayout(wide.matches, activeTab);
-  tick();
+  refresh();
 }
 function selectTab(tabId, focus = false) {
   activeTab = tabId;
@@ -387,6 +411,7 @@ window.addEventListener('storage', event => {
   if (event.key !== KEY && event.key !== null) return;
   try {
     state = load(localStorage);
+    revision += 1;
     if (ui.editorOpen()) ui.closeEditor();
     if (ui.sheetOpen()) ui.closeSheet();
     if (ui.groupsOpen()) ui.closeGroups();

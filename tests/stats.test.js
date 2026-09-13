@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTimer, emptyState, addGroup, total } from '../public/src/model.js';
-import { summarize } from '../public/src/stats.js';
+import { summarize, statsTick } from '../public/src/stats.js';
 
 const NOW = 1000000;
 function fixture() {
@@ -61,4 +61,27 @@ test('nothing recorded yet never produces NaN or Infinity', () => {
   }
   assert.deepEqual(summarize(emptyState(), NOW).groups, []);
   assert.deepEqual(summarize(emptyState(), NOW).ranking, []);
+});
+
+test('statistics recompute only when the second they display changes', () => {
+  const base = { revision: 1, second: 1000, running: 1 };
+  const first = statsTick(null, base);
+  assert.equal(first.changed, true, '最初は必ず計算する');
+  // The same displayed second over several 250ms ticks must not recompute.
+  let marker = first.marker;
+  for (let tick = 0; tick < 3; tick++) {
+    const step = statsTick(marker, base);
+    assert.equal(step.changed, false, `tick ${tick}`);
+    marker = step.marker;
+  }
+  // The next displayed second recomputes once.
+  const next = statsTick(marker, { ...base, second: 1001 });
+  assert.equal(next.changed, true);
+  // Nothing running: the displayed second cannot move, so nothing recomputes.
+  assert.equal(statsTick(next.marker, { ...base, second: 1001, running: 0 }).changed, false);
+  // A change to the records refreshes immediately, inside the same second.
+  const edited = statsTick(next.marker, { ...base, revision: 2, second: 1001 });
+  assert.equal(edited.changed, true);
+  // So does an explicit request, such as switching to the statistics tab.
+  assert.equal(statsTick(edited.marker, { ...base, revision: 2, second: 1001, force: true }).changed, true);
 });

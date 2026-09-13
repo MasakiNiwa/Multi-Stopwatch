@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#f3f5f9" media="(prefers-color-scheme:light)">
-<meta name="theme-color" content="#0b0e14" media="(prefers-color-scheme:dark)">
+<meta name="theme-color" content="#fbfaff" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#121316" media="(prefers-color-scheme:dark)">
 <meta name="description" content="学習や作業の積み重ねを残す、オフライン対応のマルチストップウォッチ。">
 <title>Multi Stopwatch</title>
 <script>
@@ -228,17 +228,28 @@
     <label class="field">メモ
       <textarea name="memo" maxlength="1000" rows="2" placeholder="任意"></textarea>
     </label>
-    <fieldset class="field split">
-      <legend>目標<span class="hint">0のままなら目標なし</span></legend>
-      <label>時間<input name="targetH" type="number" min="0" max="87600" step="1" inputmode="numeric" value="0"></label>
-      <label>分<input name="targetM" type="number" min="0" max="59" step="1" inputmode="numeric" value="0"></label>
+    <fieldset class="field">
+      <legend>目標<span class="hint">「なし」なら目標を設定しません</span></legend>
+      <div class="presets" id="target-presets">
+        <button type="button" data-preset="0">なし</button>
+        <button type="button" data-preset="15">15分</button>
+        <button type="button" data-preset="30">30分</button>
+        <button type="button" data-preset="60">1時間</button>
+        <button type="button" data-preset="120">2時間</button>
+      </div>
+      <div class="split-inputs">
+        <label>時間<input name="targetH" type="number" min="0" max="87600" step="1" inputmode="numeric" enterkeyhint="next"></label>
+        <label>分<input name="targetM" type="number" min="0" max="59" step="1" inputmode="numeric" enterkeyhint="next"></label>
+      </div>
     </fieldset>
-    <fieldset class="field split" id="elapsed-fields">
-      <legend>経過時間の修正<span class="hint">変更した場合だけ反映します</span></legend>
-      <label>時間<input name="elapsedH" type="number" min="0" max="87600" step="1" inputmode="numeric" value="0"></label>
-      <label>分<input name="elapsedM" type="number" min="0" max="59" step="1" inputmode="numeric" value="0"></label>
-      <label>秒<input name="elapsedS" type="number" min="0" max="59" step="1" inputmode="numeric" value="0"></label>
-    </fieldset>
+    <details class="field correction" id="elapsed-fields">
+      <summary>経過時間の修正<span class="hint" id="elapsed-current"></span></summary>
+      <div class="split-inputs">
+        <label>時間<input name="elapsedH" type="number" min="0" max="87600" step="1" inputmode="numeric" enterkeyhint="next"></label>
+        <label>分<input name="elapsedM" type="number" min="0" max="59" step="1" inputmode="numeric" enterkeyhint="next"></label>
+        <label>秒<input name="elapsedS" type="number" min="0" max="59" step="1" inputmode="numeric" enterkeyhint="done"></label>
+      </div>
+    </details>
     <p id="edit-error" class="form-error" role="alert"></p>
     <div class="actions dialog-actions">
       <button type="submit" class="primary">保存</button>

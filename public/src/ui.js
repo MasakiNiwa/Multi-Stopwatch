@@ -94,57 +94,62 @@ export function setListState({ hasTimers, shown, count, filtering, editable }) {
 }
 
 /* ---------- statistics ---------- */
-let statsKey = '';
-function statRow(fields) {
-  const item = $('#stat-row').content.firstElementChild.cloneNode(true);
-  for (const [selector, value] of Object.entries(fields)) text(item.querySelector(selector), value);
-  return item;
-}
-function setBar(item, share) {
-  item.querySelector('.bar > span').style.width = `${Math.round(share * 100)}%`;
-}
+export function statsVisible() { return !$('#panel-stats').hidden; }
 const percent = share => `${Math.round(share * 100)}%`;
+// Rows are reused and updated in place. Rebuilding both lists on every refresh would throw away
+// and recreate up to a hundred rows a second for text that mostly has not changed.
+function syncStatList(list, rows) {
+  const existing = new Map([...list.children].map(item => [item.dataset.key, item]));
+  const ordered = rows.map(row => {
+    const item = existing.get(row.key) ?? $('#stat-row').content.firstElementChild.cloneNode(true);
+    existing.delete(row.key);
+    item.dataset.key = row.key;
+    text(item.querySelector('.stat-rank'), row.rank);
+    text(item.querySelector('.stat-name'), row.name);
+    text(item.querySelector('.stat-time'), row.time);
+    text(item.querySelector('.stat-sub'), row.sub);
+    text(item.querySelector('.stat-share'), percent(row.share));
+    const fill = item.querySelector('.bar > span'), width = `${Math.round(row.share * 100)}%`;
+    if (fill.style.width !== width) fill.style.width = width;
+    return item;
+  });
+  for (const item of existing.values()) item.remove();
+  ordered.forEach((item, index) => {
+    if (list.children[index] !== item) list.insertBefore(item, list.children[index] ?? null);
+  });
+}
 
-// Rebuilt only when a value actually changed, which in practice is once per second.
+// Called only when statsTick says the visible numbers moved, so this rebuild runs at most once a second.
 export function paintStats(summary) {
-  if ($('#panel-stats').hidden) return;
-  const key = JSON.stringify(summary);
-  if (key === statsKey) return;
-  statsKey = key;
   text($('#stat-total'), format(summary.totalMs));
   text($('#stat-running'), `${summary.runningCount} / ${summary.timerCount}`);
   const empty = summary.timerCount === 0;
   $('#stat-empty').hidden = !empty;
   $('#stat-group-block').hidden = empty;
   $('#stat-rank-block').hidden = empty;
-  $('#stat-groups').replaceChildren(...summary.groups.map(group => {
-    const item = statRow({
-      '.stat-rank': '',
-      '.stat-name': group.name,
-      '.stat-time': format(group.totalMs),
-      '.stat-sub': `${group.timerCount}件${group.runningCount > 0 ? `・計測中${group.runningCount}` : ''}`,
-      '.stat-share': percent(group.share),
-    });
-    setBar(item, group.share);
-    return item;
-  }));
-  $('#stat-ranking').replaceChildren(...summary.ranking.map(row => {
-    const item = statRow({
-      '.stat-rank': `${row.rank}`,
-      '.stat-name': row.name,
-      '.stat-time': format(row.ms),
-      '.stat-sub': row.groupName,
-      '.stat-share': percent(row.share),
-    });
-    setBar(item, row.share);
-    return item;
-  }));
+  syncStatList($('#stat-groups'), summary.groups.map(group => ({
+    key: group.id ?? 'ungrouped',
+    rank: '',
+    name: group.name,
+    time: format(group.totalMs),
+    sub: `${group.timerCount}件${group.runningCount > 0 ? `・計測中${group.runningCount}` : ''}`,
+    share: group.share,
+  })));
+  syncStatList($('#stat-ranking'), summary.ranking.map(row => ({
+    key: row.id,
+    rank: `${row.rank}`,
+    name: row.name,
+    time: format(row.ms),
+    sub: row.groupName,
+    share: row.share,
+  })));
 }
 
 /* ---------- layout: tabs when stacked, two columns when wide and landscape ---------- */
 const TABS = [['tab-timers', 'panel-timers'], ['tab-stats', 'panel-stats']];
 export function applyLayout(split, activeTab) {
   document.body.dataset.layout = split ? 'split' : 'tabs';
+  document.body.dataset.view = split ? 'both' : (activeTab === 'tab-stats' ? 'stats' : 'timers');
   $('#view-tabs').hidden = split;
   for (const [tabId, panelId] of TABS) {
     const tab = $(`#${tabId}`), panel = $(`#${panelId}`);
@@ -164,7 +169,6 @@ export function applyLayout(split, activeTab) {
       panel.hidden = !selected;
     }
   }
-  statsKey = ''; // A panel that was hidden has stale content; force the next paint to fill it.
 }
 
 /* ---------- groups ---------- */
@@ -254,6 +258,30 @@ export function paintSheet(timer, now, { index, count, editable, state }) {
 export function closeSheet() { $('#sheet').close(); }
 export function sheetOpen() { return $('#sheet').open; }
 
+// Typing a digit should replace what is there, on a phone as much as with a keyboard.
+export function selectOnFocus(root) {
+  for (const input of root.querySelectorAll('input[type="number"]')) {
+    // Select immediately for keyboard focus, and again after the frame because a tap places the
+    // caret after the focus event on touch browsers.
+    input.addEventListener('focus', event => {
+      event.target.select();
+      requestAnimationFrame(() => { if (document.activeElement === event.target) event.target.select(); });
+    });
+    input.addEventListener('mouseup', event => event.preventDefault());
+  }
+}
+export function markPresets(targetMs) {
+  const minutes = Math.round(targetMs / 60000);
+  for (const button of document.querySelectorAll('#target-presets button')) {
+    button.setAttribute('aria-pressed', String(Number(button.dataset.preset) === minutes));
+  }
+}
+export function setTarget(minutes) {
+  const f = $('#edit-form').elements;
+  f.targetH.value = Math.floor(minutes / 60);
+  f.targetM.value = minutes % 60;
+  markPresets(minutes * 60000);
+}
 export function openEditor(timer, isNew) {
   const form = $('#edit-form'), f = form.elements;
   text($('#editor-title'), isNew ? '計測を追加' : '計測を編集');
@@ -263,24 +291,33 @@ export function openEditor(timer, isNew) {
   form.querySelector(`input[name="color"][value="${timer.color}"]`).checked = true;
   f.targetH.value = Math.floor(timer.targetMs / 3600000);
   f.targetM.value = Math.floor(timer.targetMs / 60000) % 60;
+  markPresets(timer.targetMs);
   const { h, m, s } = parts(timer.elapsedMs);
   f.elapsedH.value = Number(h); f.elapsedM.value = Number(m); f.elapsedS.value = Number(s);
-  $('#elapsed-fields').hidden = isNew;
+  // The correction stays folded away during an ordinary edit, with the current value on show.
+  const correction = $('#elapsed-fields');
+  correction.hidden = isNew;
+  correction.open = false;
+  text($('#elapsed-current'), `現在 ${format(timer.elapsedMs)}`);
   $('#editor').showModal();
   f.name.focus();
   f.name.select();
+  $('#editor').scrollTop = 0; // Focusing can scroll the heading out of view on a short screen.
 }
 
 // Returns the submitted values, or null with a message shown when they are not usable.
 export function readEditor() {
   const f = $('#edit-form').elements;
-  const num = input => (input.value === '' ? NaN : Number(input.value));
+  // A cleared box is someone midway through typing, not an error: it counts as zero on save.
+  const num = input => (input.value.trim() === '' ? 0 : Number(input.value));
   const name = f.name.value.trim();
   if (!name) { text($('#edit-error'), '名前を入力してください。'); f.name.focus(); return null; }
   const fields = [f.targetH, f.targetM, f.elapsedH, f.elapsedM, f.elapsedS];
-  if (fields.some(input => !Number.isInteger(num(input)) || num(input) < 0)) {
+  const broken = fields.find(input => !Number.isInteger(num(input)) || num(input) < 0);
+  if (broken) {
     text($('#edit-error'), '時間・分・秒には0以上の整数を入力してください。');
-    fields.find(input => !Number.isInteger(num(input)) || num(input) < 0).focus();
+    $('#elapsed-fields').open ||= broken.name.startsWith('elapsed');
+    broken.focus();
     return null;
   }
   return {

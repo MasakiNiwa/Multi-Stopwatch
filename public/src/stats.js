@@ -2,6 +2,19 @@
 // v0.5 summarises accumulated totals only; there is no session history to report on yet.
 import { elapsed, running, total, UNGROUPED_NAME } from './model.js';
 
+// Decides when the statistics view needs recomputing. Aggregating on every 250ms tick would work
+// four times a second for figures that only move when their displayed second changes.
+// `second` is the second the caller is about to display, not the wall clock: the headline total
+// advances once per running timer per second, and the panel has to agree with the hero that shows
+// the same number. A change to the records, or an explicit request, refreshes straight away.
+export function statsTick(previous, { revision, second, running, force = false }) {
+  const marker = { revision, second };
+  const changed = force || previous === null
+    || previous.revision !== revision
+    || (running > 0 && previous.second !== second);
+  return { changed, marker };
+}
+
 export function summarize(state, now) {
   const timers = state.timers;
   const totalMs = total(timers, now);
