@@ -1,5 +1,6 @@
 // DOM rendering and dialogs. Holds no application state: every function is told what to show.
-import { elapsed, format, parts, progress, shortDuration, speak, running, total, MAX_MS } from './model.js';
+import { elapsed, format, parts, progress, shortDuration, speak, running, total, groupName, UNGROUPED_NAME, MAX_MS } from './model.js';
+import { SORTS } from './sorting.js';
 
 const $ = selector => document.querySelector(selector);
 const rows = () => $('#timers').children;
@@ -39,7 +40,7 @@ export function sync(timers, { editable, reorderable }) {
 
 // Called on every tick: only time-dependent parts of the view.
 // `shown` are the rows on screen; the summary always counts every timer, filtered out or not.
-export function paint(shown, all, now) {
+export function paint(shown, all, now, groups = new Map()) {
   [...rows()].forEach((row, index) => {
     const t = shown[index];
     if (!t) return;
@@ -57,6 +58,7 @@ export function paint(shown, all, now) {
     const bar = row.querySelector('.bar');
     bar.hidden = t.targetMs === 0;
     if (t.targetMs > 0) bar.firstElementChild.style.width = `${progress(ms, t.targetMs) * 100}%`;
+    text(row.querySelector('.meta-group'), groups.get(t.groupId) ?? '');
     text(row.querySelector('.meta-note'), noteFor(t, ms));
   });
   const count = running(all);
@@ -69,7 +71,7 @@ export function paint(shown, all, now) {
 // The goal uses a short duration because a row has little room beside the running time.
 function noteFor(timer, ms) {
   if (timer.targetMs > 0) {
-    return ms >= timer.targetMs ? '目標達成 ✓' : `目標まで ${100 - Math.floor(progress(ms, timer.targetMs) * 100)}%`;
+    return ms >= timer.targetMs ? '目標達成 ✓' : `目標 ${Math.floor(progress(ms, timer.targetMs) * 100)}%`;
   }
   return timer.memo.replace(/\s+/g, ' ').trim();
 }
@@ -81,12 +83,126 @@ function sheetGoal(timer, ms) {
     : `目標 ${shortDuration(timer.targetMs)}（${format(timer.targetMs)}）・${percent}%`;
 }
 
-export function setListState({ hasTimers, shown, count, filtering }) {
+export function setListState({ hasTimers, shown, count, filtering, editable }) {
   $('#empty').hidden = hasTimers;
-  $('#filter-bar').hidden = count < 6;
+  $('#filter').hidden = count < 6;
   $('#no-match').hidden = !(hasTimers && shown === 0);
   text($('#filter-count'), filtering ? `${count}件中 ${shown}件を表示` : '');
+  $('#apply-sort').disabled = !editable || count < 2;
+  $('#sort').disabled = !editable || count < 2;
+  $('#manage-groups').disabled = !editable;
 }
+
+/* ---------- statistics ---------- */
+let statsKey = '';
+function statRow(fields) {
+  const item = $('#stat-row').content.firstElementChild.cloneNode(true);
+  for (const [selector, value] of Object.entries(fields)) text(item.querySelector(selector), value);
+  return item;
+}
+function setBar(item, share) {
+  item.querySelector('.bar > span').style.width = `${Math.round(share * 100)}%`;
+}
+const percent = share => `${Math.round(share * 100)}%`;
+
+// Rebuilt only when a value actually changed, which in practice is once per second.
+export function paintStats(summary) {
+  if ($('#panel-stats').hidden) return;
+  const key = JSON.stringify(summary);
+  if (key === statsKey) return;
+  statsKey = key;
+  text($('#stat-total'), format(summary.totalMs));
+  text($('#stat-running'), `${summary.runningCount} / ${summary.timerCount}`);
+  const empty = summary.timerCount === 0;
+  $('#stat-empty').hidden = !empty;
+  $('#stat-group-block').hidden = empty;
+  $('#stat-rank-block').hidden = empty;
+  $('#stat-groups').replaceChildren(...summary.groups.map(group => {
+    const item = statRow({
+      '.stat-rank': '',
+      '.stat-name': group.name,
+      '.stat-time': format(group.totalMs),
+      '.stat-sub': `${group.timerCount}件${group.runningCount > 0 ? `・計測中${group.runningCount}` : ''}`,
+      '.stat-share': percent(group.share),
+    });
+    setBar(item, group.share);
+    return item;
+  }));
+  $('#stat-ranking').replaceChildren(...summary.ranking.map(row => {
+    const item = statRow({
+      '.stat-rank': `${row.rank}`,
+      '.stat-name': row.name,
+      '.stat-time': format(row.ms),
+      '.stat-sub': row.groupName,
+      '.stat-share': percent(row.share),
+    });
+    setBar(item, row.share);
+    return item;
+  }));
+}
+
+/* ---------- layout: tabs when stacked, two columns when wide and landscape ---------- */
+const TABS = [['tab-timers', 'panel-timers'], ['tab-stats', 'panel-stats']];
+export function applyLayout(split, activeTab) {
+  document.body.dataset.layout = split ? 'split' : 'tabs';
+  $('#view-tabs').hidden = split;
+  for (const [tabId, panelId] of TABS) {
+    const tab = $(`#${tabId}`), panel = $(`#${panelId}`);
+    const selected = tabId === activeTab;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    if (split) {
+      // Both panels are on screen at once, so they are regions rather than tab panels.
+      panel.hidden = false;
+      panel.setAttribute('role', 'region');
+      panel.setAttribute('aria-label', tabId === 'tab-stats' ? '統計' : '計測一覧');
+      panel.removeAttribute('aria-labelledby');
+    } else {
+      panel.setAttribute('role', 'tabpanel');
+      panel.setAttribute('aria-labelledby', tabId);
+      panel.removeAttribute('aria-label');
+      panel.hidden = !selected;
+    }
+  }
+  statsKey = ''; // A panel that was hidden has stale content; force the next paint to fill it.
+}
+
+/* ---------- groups ---------- */
+export function fillSortOptions() {
+  $('#sort').replaceChildren(...SORTS.map(sort => new Option(sort.label, sort.key)));
+}
+export function fillGroupSelect(state, selectedId) {
+  const select = $('#edit-form').elements.group;
+  select.replaceChildren(new Option(UNGROUPED_NAME, ''), ...state.groups.map(group => new Option(group.name, group.id)));
+  select.value = selectedId ?? '';
+}
+export function renderGroupList(state) {
+  // Renaming rebuilds the list from a commit; keep the caret on the row the user is working in.
+  const focusedId = document.activeElement?.closest?.('.group-row')?.dataset.id ?? null;
+  const counts = new Map();
+  for (const timer of state.timers) counts.set(timer.groupId, (counts.get(timer.groupId) ?? 0) + 1);
+  $('#group-list').replaceChildren(...state.groups.map(group => {
+    const row = $('#group-row').content.firstElementChild.cloneNode(true);
+    row.dataset.id = group.id;
+    const input = row.querySelector('.group-name');
+    input.value = group.name;
+    input.setAttribute('aria-label', `${group.name}の名前`);
+    text(row.querySelector('.group-count'), `${counts.get(group.id) ?? 0}件`);
+    row.querySelector('[data-group="delete"]').setAttribute('aria-label', `${group.name}を削除`);
+    return row;
+  }));
+  $('#group-empty').hidden = state.groups.length > 0;
+  if (focusedId) $(`.group-row[data-id="${focusedId}"] .group-name`)?.focus();
+}
+export function openGroups() {
+  text($('#group-error'), '');
+  $('#group-add').elements.groupName.value = '';
+  $('#groups').showModal();
+  $('#group-add').elements.groupName.focus();
+}
+export function closeGroups() { $('#groups').close(); }
+export function groupsOpen() { return $('#groups').open; }
+export function groupError(message) { text($('#group-error'), message); }
 
 export function announce(message) {
   text($('#live'), message);
@@ -120,12 +236,13 @@ export function openSheet() {
   $('#sheet').showModal();
   $('#sheet-toggle').focus();
 }
-export function paintSheet(timer, now, { index, count, editable }) {
+export function paintSheet(timer, now, { index, count, editable, state }) {
   if (!$('#sheet').open || !timer) return;
   const ms = elapsed(timer, now), isRunning = timer.startedAt !== null;
   text($('#sheet-title'), timer.name);
   text($('#sheet-time'), format(ms));
   text($('#sheet-toggle'), isRunning ? '■ 停止' : '▶ 開始');
+  text($('#sheet-group'), `グループ：${groupName(state, timer.groupId)}`);
   text($('#sheet-goal'), timer.targetMs > 0 ? sheetGoal(timer, ms) : '');
   text($('#sheet-memo'), timer.memo);
   $('#sheet-toggle').disabled = !editable;
@@ -170,6 +287,7 @@ export function readEditor() {
     name,
     memo: f.memo.value,
     color: f.color.value,
+    groupId: f.group.value === '' ? null : f.group.value,
     // Bound the target here so an extreme entry is capped instead of failing validation on save.
     targetMs: Math.min(MAX_MS, num(f.targetH) * 3600000 + num(f.targetM) * 60000),
     elapsedMs: num(f.elapsedH) * 3600000 + num(f.elapsedM) * 60000 + num(f.elapsedS) * 1000,

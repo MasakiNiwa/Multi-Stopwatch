@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTimer, start, stop, reset, setElapsed, elapsed, format, parts, speak, progress, shortDuration, move, matches, total, running, validate, MAX_MS } from '../public/src/model.js';
+import { createTimer, start, stop, reset, setElapsed, elapsed, format, parts, speak, progress, shortDuration, move, matches, total, running, validate, emptyState, MAX_MS } from '../public/src/model.js';
 import { load, save, loadPrefs, savePrefs, validatePrefs, DEFAULT_PREFS, PREFS_KEY } from '../public/src/storage.js';
 test('pause/resume accumulates only running intervals and repeated start is idempotent', () => {
  let t = start(createTimer('a'), 1000); t = start(t, 1500);
@@ -10,8 +10,8 @@ test('pause/resume accumulates only running intervals and repeated start is idem
 });
 test('persisted running timer includes closed time without tick callbacks', () => {
  let raw; const storage = { getItem: () => raw ?? null, setItem: (_, value) => raw = value };
- assert.deepEqual(load(storage), { version: 1, timers: [] });
- save(storage, { version: 1, timers: [start(createTimer('a'), 1000)] });
+ assert.deepEqual(load(storage), emptyState());
+ save(storage, { ...emptyState(), timers: [start(createTimer('a'), 1000)] });
  assert.equal(elapsed(load(storage).timers[0], 86401000), 86400000);
  assert.equal(format(86400000), '24:00:00');
 });
@@ -25,11 +25,11 @@ test('independent timers remain independent', () => {
  assert.equal(elapsed(b, 10000), 7000);
 });
 test('reject corrupt, duplicate, future-schema and unbounded data', () => {
- for (const state of [null, {version:2,timers:[]}, {version:1,timers:[createTimer('a'),createTimer('a')]}, ...[NaN,Infinity,-1,MAX_MS+1].map(n=>({version:1,timers:[{...createTimer('a'),elapsedMs:n}]}))]) assert.throws(()=>validate(state));
+ for (const state of [null, {version:3,timers:[],groups:[]}, {...emptyState(),timers:[createTimer('a'),createTimer('a')]}, ...[NaN,Infinity,-1,MAX_MS+1].map(n=>({...emptyState(),timers:[{...createTimer('a'),elapsedMs:n}]}))]) assert.throws(()=>validate(state));
  assert.throws(()=>load({ getItem:()=>'{broken' }));
 });
 test('storage write failures propagate rather than claim success', () => {
- assert.throws(()=>save({setItem(){throw Error('quota');}}, {version:1,timers:[]}));
+ assert.throws(()=>save({setItem(){throw Error('quota');}}, emptyState()));
 });
 test('manual correction keeps a running timer running from the corrected value', () => {
  const t = setElapsed(start(createTimer('a'), 1000), 3600000, 5000);
@@ -42,7 +42,7 @@ test('manual correction keeps a running timer running from the corrected value',
 test('correction is clamped instead of storing values validate would reject', () => {
  assert.equal(setElapsed(createTimer('a'), -1, 0).elapsedMs, 0);
  assert.equal(setElapsed(createTimer('a'), MAX_MS * 2, 0).elapsedMs, MAX_MS);
- assert.doesNotThrow(() => validate({ version: 1, timers: [setElapsed(createTimer('a'), MAX_MS * 2, 0)] }));
+ assert.doesNotThrow(() => validate({ ...emptyState(), timers: [setElapsed(createTimer('a'), MAX_MS * 2, 0)] }));
 });
 test('display keeps hours unwrapped and reads out in Japanese', () => {
  assert.deepEqual(parts(3723000), { h: '01', m: '02', s: '03' });
@@ -97,7 +97,7 @@ test('preferences and stopwatch records use separate keys', async () => {
  assert.notEqual(KEY, PREFS_KEY);
  const store = new Map();
  const storage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
- save(storage, { version: 1, timers: [createTimer('a')] });
+ save(storage, { ...emptyState(), timers: [createTimer('a')] });
  savePrefs(storage, { version: 1, theme: 'light' });
  assert.equal(load(storage).timers.length, 1);
  assert.equal(loadPrefs(storage).theme, 'light');

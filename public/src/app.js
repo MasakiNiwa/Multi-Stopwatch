@@ -1,10 +1,15 @@
 // Wiring: owns the state, applies domain functions, persists, then asks the UI to redraw.
-import { createTimer, elapsed, start, stop, reset, setElapsed, move, matches, running, validate, format, MAX_TIMERS } from './model.js';
-import { load, save, KEY, loadPrefs, savePrefs, THEMES } from './storage.js';
+import {
+  createTimer, elapsed, start, stop, reset, setElapsed, move, matches, running, format, emptyState,
+  addGroup, renameGroup, removeGroup, groupName, groupNameError, MAX_TIMERS,
+} from './model.js';
+import { load, save, readState, KEY, loadPrefs, savePrefs, THEMES } from './storage.js';
+import { summarize } from './stats.js';
+import { applySort, sortLabel } from './sorting.js';
 import * as ui from './ui.js';
 
 const $ = selector => document.querySelector(selector);
-let state, shown = [], query = '', draft = null, editing = null, sheetId = null, readOnly = false, ownsLock = false;
+let state, shown = [], groups = new Map(), query = '', draft = null, editing = null, sheetId = null, readOnly = false, ownsLock = false;
 const editable = () => !readOnly && ownsLock;
 const reorderable = () => query.trim() === '';
 const find = id => state.timers.find(t => t.id === id);
@@ -13,7 +18,7 @@ const indexOf = id => state.timers.findIndex(t => t.id === id);
 try {
   state = load(localStorage);
 } catch {
-  state = { version: 1, timers: [] };
+  state = emptyState();
   readOnly = true;
   ui.notice('保存データを読み込めません。元データの上書きを防ぐため編集を停止しました。「バックアップを保存」で元データを取り出せます。', { sticky: true });
   $('.help').open = true; // The recovery button must not stay behind a closed section.
@@ -49,18 +54,26 @@ applyTheme();
 
 /* ---------- rendering ---------- */
 function render() {
+  // The filter box hides below six timers; a query left behind would silently keep rows out of view.
+  if (state.timers.length < 6 && query !== '') { query = ''; $('#filter').value = ''; }
+  groups = new Map(state.groups.map(group => [group.id, group.name]));
   shown = state.timers.filter(timer => matches(timer, query));
   ui.sync(shown, { editable: editable(), reorderable: reorderable() });
-  ui.setListState({ hasTimers: state.timers.length > 0, shown: shown.length, count: state.timers.length, filtering: query.trim() !== '' });
+  ui.setListState({
+    hasTimers: state.timers.length > 0, shown: shown.length, count: state.timers.length,
+    filtering: query.trim() !== '', editable: editable(),
+  });
   $('#add').disabled = !editable() || state.timers.length >= MAX_TIMERS;
   $('#stop-all').disabled = !editable() || running(state.timers) === 0;
   $('#import').disabled = !editable();
+  if (ui.groupsOpen()) ui.renderGroupList(state);
   tick();
 }
 function tick() {
   if (document.hidden) return;
   const now = Date.now();
-  ui.paint(shown, state.timers, now);
+  ui.paint(shown, state.timers, now, groups);
+  ui.paintStats(summarize(state, now));
   if (sheetId) ui.paintSheet(find(sheetId), now, sheetPosition());
 }
 function commit(next) {
@@ -74,6 +87,7 @@ const update = (id, fn) => commit({ ...state, timers: state.timers.map(t => (t.i
 $('#add').onclick = () => {
   draft = createTimer(crypto.randomUUID(), '');
   editing = { ...draft, snapshotMs: 0 };
+  ui.fillGroupSelect(state, null);
   ui.openEditor(draft, true);
 };
 $('#stop-all').onclick = () => {
@@ -116,7 +130,7 @@ $('#timers').onclick = event => {
 };
 
 /* ---------- detail sheet ---------- */
-const sheetPosition = () => ({ index: indexOf(sheetId), count: state.timers.length, editable: editable() });
+const sheetPosition = () => ({ index: indexOf(sheetId), count: state.timers.length, editable: editable(), state });
 function openSheetFor(id) {
   if (!find(id)) return;
   sheetId = id;
@@ -218,6 +232,7 @@ $('#timers').addEventListener('keydown', event => {
 /* ---------- editor ---------- */
 function openEditorFor(timer) {
   editing = { ...timer, snapshotMs: elapsed(timer, Date.now()) };
+  ui.fillGroupSelect(state, timer.groupId);
   ui.openEditor({ ...timer, elapsedMs: editing.snapshotMs }, false);
 }
 $('#cancel').onclick = () => ui.closeEditor();
@@ -231,7 +246,7 @@ $('#edit-form').onsubmit = event => {
   // freeze a running timer, so only an actual edit is applied.
   const changed = values.elapsedMs !== Math.floor(base.snapshotMs / 1000) * 1000;
   const apply = t => {
-    const edited = { ...t, name: values.name, memo: values.memo, color: values.color, targetMs: values.targetMs };
+    const edited = { ...t, name: values.name, memo: values.memo, color: values.color, targetMs: values.targetMs, groupId: values.groupId };
     return changed ? setElapsed(edited, values.elapsedMs, Date.now()) : edited;
   };
   if (draft) {
@@ -262,12 +277,92 @@ $('#import').onchange = async event => {
   if (!file) return;
   try {
     if (file.size > 1024 * 1024) throw Error('ファイルが大きすぎます');
-    const next = validate(JSON.parse(await file.text()));
+    const next = readState(await file.text());
     const message = `現在の${state.timers.length}件を、バックアップの${next.timers.length}件で置き換えます。動作中の計測は保存時からの時間も含めて再開します。`;
     if (await ui.ask({ title: 'バックアップから復元しますか？', message, confirmLabel: '復元する' }) && commit(next)) ui.notice('バックアップから復元しました。');
   } catch { ui.notice('このファイルは復元できません。現在の記録は変更していません。', { sticky: true }); }
   finally { event.target.value = ''; }
 };
+
+/* ---------- bulk sort ---------- */
+ui.fillSortOptions();
+$('#apply-sort').onclick = () => {
+  const key = $('#sort').value;
+  if (key === 'manual') { ui.notice('「手動順のまま」を選ぶと並び順は変わりません。'); return; }
+  // Applies to every timer, not only the ones a filter happens to show.
+  if (commit(applySort(state, key, Date.now()))) {
+    ui.announce(`${state.timers.length}件を${sortLabel(key)}に並べ替えました`);
+    ui.notice(`${state.timers.length}件を「${sortLabel(key)}」で並べ替えました。ドラッグや上下キーで微調整できます。`);
+  }
+};
+
+/* ---------- groups ---------- */
+$('#manage-groups').onclick = () => { ui.renderGroupList(state); ui.openGroups(); };
+$('#groups-close').onclick = () => ui.closeGroups();
+$('#group-add').onsubmit = event => {
+  event.preventDefault();
+  const input = event.currentTarget.elements.groupName, name = input.value;
+  const problem = groupNameError(state, name);
+  if (problem) { ui.groupError(problem); input.focus(); return; }
+  if (commit(addGroup(state, crypto.randomUUID(), name))) {
+    ui.groupError('');
+    input.value = '';
+    input.focus();
+    ui.announce(`グループ「${name.trim()}」を追加しました`);
+  }
+};
+$('#group-list').addEventListener('change', event => {
+  const input = event.target.closest('.group-name');
+  if (!input) return;
+  const id = input.closest('.group-row').dataset.id, before = groupName(state, id);
+  const problem = groupNameError(state, input.value, id);
+  if (problem) { ui.groupError(problem); input.value = before; input.focus(); return; }
+  if (commit(renameGroup(state, id, input.value))) {
+    ui.groupError('');
+    ui.notice(`グループ「${before}」を「${input.value.trim()}」に変更しました。`);
+  } else {
+    input.value = before;
+  }
+});
+$('#group-list').addEventListener('click', async event => {
+  const button = event.target.closest('[data-group="delete"]');
+  if (!button || !editable()) return;
+  const id = button.closest('.group-row').dataset.id, name = groupName(state, id);
+  const members = state.timers.filter(timer => timer.groupId === id).length;
+  const message = members === 0
+    ? `グループ「${name}」を削除します。`
+    : `グループ「${name}」を削除します。中の${members}件の計測は消えず、「未分類」へ移ります。`;
+  if (await ui.ask({ title: 'グループを削除しますか？', message, confirmLabel: '削除する' }) && commit(removeGroup(state, id))) {
+    ui.notice(`グループ「${name}」を削除しました。${members > 0 ? `${members}件を未分類へ移しました。` : ''}`);
+    ui.openGroups();
+  }
+});
+
+/* ---------- layout and tabs ---------- */
+// Wide landscape screens show the list and the statistics side by side; everything else uses tabs.
+const wide = matchMedia('(orientation: landscape) and (min-width: 800px)');
+let activeTab = 'tab-timers';
+function layout() {
+  ui.applyLayout(wide.matches, activeTab);
+  tick();
+}
+function selectTab(tabId, focus = false) {
+  activeTab = tabId;
+  layout();
+  if (focus) $(`#${tabId}`).focus();
+}
+wide.addEventListener('change', layout);
+$('#view-tabs').addEventListener('click', event => {
+  const tab = event.target.closest('[role="tab"]');
+  if (tab) selectTab(tab.id);
+});
+$('#view-tabs').addEventListener('keydown', event => {
+  const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+  if (step === 0) return;
+  event.preventDefault();
+  const tabs = ['tab-timers', 'tab-stats'];
+  selectTab(tabs[(tabs.indexOf(activeTab) + step + tabs.length) % tabs.length], true);
+});
 
 /* ---------- lifecycle ---------- */
 // Hold a single-writer lock for the lifetime of this page. Other tabs may view only.
@@ -294,6 +389,7 @@ window.addEventListener('storage', event => {
     state = load(localStorage);
     if (ui.editorOpen()) ui.closeEditor();
     if (ui.sheetOpen()) ui.closeSheet();
+    if (ui.groupsOpen()) ui.closeGroups();
     render();
   } catch {
     readOnly = true;
@@ -324,6 +420,7 @@ if ('serviceWorker' in navigator) {
   $('#offline').textContent = 'この環境ではオフライン起動に対応していません';
 }
 
+layout();
 render();
 setInterval(tick, 250);
 document.addEventListener('visibilitychange', tick);

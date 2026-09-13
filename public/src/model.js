@@ -4,8 +4,15 @@ export const MAX_MS = 315360000000; // Ten years; validation/display bound.
 export const MAX_TIMERS = 100;
 export const NAME_MAX = 80;
 export const MEMO_MAX = 1000;
+export const SCHEMA_VERSION = 2;
+export const MAX_GROUPS = 20;
+export const GROUP_NAME_MAX = 40;
+export const UNGROUPED_NAME = '未分類';
 export function createTimer(id, name = '新しい計測') {
-  return { id, name, memo: '', color: 'mint', elapsedMs: 0, startedAt: null, targetMs: 0 };
+  return { id, name, memo: '', color: 'mint', elapsedMs: 0, startedAt: null, targetMs: 0, groupId: null };
+}
+export function emptyState() {
+  return { version: SCHEMA_VERSION, timers: [], groups: [] };
 }
 export function elapsed(timer, now) {
   return Math.min(MAX_MS, timer.elapsedMs + (timer.startedAt === null ? 0 : Math.max(0, now - timer.startedAt)));
@@ -70,12 +77,60 @@ export function matches(timer, query) {
   const q = norm(query).trim();
   return q === '' || norm(timer.name).includes(q) || norm(timer.memo).includes(q);
 }
+/* ---------- groups ---------- */
+export function groupName(state, groupId) {
+  return state.groups.find(g => g.id === groupId)?.name ?? UNGROUPED_NAME;
+}
+// Reported to the user before a write is attempted, so the pure operations below stay total.
+export function groupNameError(state, name, exceptId = null) {
+  const key = value => value.normalize('NFKC').trim().toLowerCase();
+  const trimmed = name.trim();
+  if (trimmed === '') return 'グループ名を入力してください。';
+  if (trimmed.length > GROUP_NAME_MAX) return `グループ名は${GROUP_NAME_MAX}文字までにしてください。`;
+  if (state.groups.some(g => g.id !== exceptId && key(g.name) === key(trimmed))) return '同じ名前のグループがあります。';
+  if (state.groups.length >= MAX_GROUPS && exceptId === null) return `グループは${MAX_GROUPS}個までです。`;
+  return null;
+}
+export function addGroup(state, id, name) {
+  return { ...state, groups: [...state.groups, { id, name: name.trim() }] };
+}
+export function renameGroup(state, id, name) {
+  return { ...state, groups: state.groups.map(g => (g.id === id ? { ...g, name: name.trim() } : g)) };
+}
+// Deleting a group never deletes its timers: they fall back to 未分類 keeping time and order.
+export function removeGroup(state, id) {
+  return {
+    ...state,
+    groups: state.groups.filter(g => g.id !== id),
+    timers: state.timers.map(t => (t.groupId === id ? { ...t, groupId: null } : t)),
+  };
+}
+
+/* ---------- schema ---------- */
+// v1 had no groups. Every existing timer becomes 未分類, keeping time, running state and order.
+export function migrate(state) {
+  if (!state || typeof state !== 'object' || Array.isArray(state)) throw Error('保存データを読み込めません');
+  if (state.version === SCHEMA_VERSION) return state;
+  if (state.version !== 1) throw Error('対応していない保存形式です');
+  if (!Array.isArray(state.timers)) throw Error('保存データを読み込めません');
+  return {
+    version: SCHEMA_VERSION,
+    timers: state.timers.map(timer => ({ ...timer, groupId: null })),
+    groups: [],
+  };
+}
 export function validate(state) {
   const bounded = n => Number.isSafeInteger(n) && n >= 0 && n <= MAX_MS;
-  if (!state || state.version !== 1 || !Array.isArray(state.timers) || state.timers.length > MAX_TIMERS) throw Error('対応していない保存形式です');
+  if (!state || state.version !== SCHEMA_VERSION || !Array.isArray(state.timers) || !Array.isArray(state.groups)
+    || state.timers.length > MAX_TIMERS || state.groups.length > MAX_GROUPS) throw Error('対応していない保存形式です');
+  const groupIds = new Set();
+  for (const g of state.groups) {
+    if (!g || typeof g.id !== 'string' || !g.id || groupIds.has(g.id) || typeof g.name !== 'string' || g.name.trim() === '' || g.name.length > GROUP_NAME_MAX) throw Error('保存データを読み込めません');
+    groupIds.add(g.id);
+  }
   const ids = new Set();
   for (const t of state.timers) {
-    if (!t || typeof t.id !== 'string' || !t.id || ids.has(t.id) || typeof t.name !== 'string' || t.name.length > NAME_MAX || typeof t.memo !== 'string' || t.memo.length > MEMO_MAX || !COLORS.includes(t.color) || !bounded(t.elapsedMs) || !bounded(t.targetMs) || !(t.startedAt === null || (Number.isSafeInteger(t.startedAt) && t.startedAt >= 0 && t.startedAt <= 8640000000000000))) throw Error('保存データを読み込めません');
+    if (!t || typeof t.id !== 'string' || !t.id || ids.has(t.id) || typeof t.name !== 'string' || t.name.length > NAME_MAX || typeof t.memo !== 'string' || t.memo.length > MEMO_MAX || !COLORS.includes(t.color) || !bounded(t.elapsedMs) || !bounded(t.targetMs) || !(t.startedAt === null || (Number.isSafeInteger(t.startedAt) && t.startedAt >= 0 && t.startedAt <= 8640000000000000)) || !(t.groupId === null || groupIds.has(t.groupId))) throw Error('保存データを読み込めません');
     ids.add(t.id);
   }
   return state;
