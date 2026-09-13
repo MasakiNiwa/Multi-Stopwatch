@@ -70,6 +70,7 @@
   </div>
 
   <p id="notice" role="status"></p>
+  <div id="undo-delete" class="undo-delete" hidden><span>削除しました</span><button id="undo" type="button">元に戻す</button><button id="dismiss-undo" type="button" aria-label="削除通知を閉じる">閉じる</button></div>
 
   <div id="view-tabs" class="tabs" role="tablist" aria-label="表示の切り替え">
     <button type="button" role="tab" id="tab-timers" aria-controls="panel-timers" aria-selected="true">計測</button>
@@ -79,6 +80,7 @@
   <div class="columns">
     <section id="panel-timers" aria-labelledby="tab-timers">
       <div class="tools">
+        <div class="tools-row"><button type="button" id="add-set">＋ セット</button><button type="button" id="delete-mode" aria-pressed="false">削除モード</button></div>
         <input id="filter" type="search" placeholder="名前やメモで絞り込む" autocomplete="off" aria-label="計測を名前やメモで絞り込む" hidden>
         <p id="filter-count" class="filter-count" role="status"></p>
         <div class="tools-row">
@@ -115,13 +117,14 @@
         <h3>累計時間ランキング</h3>
         <ol id="stat-ranking" class="stat-list"></ol>
       </section>
+      <section class="stat-block" id="stat-set-block" hidden><h3>セット別小計</h3><ul id="stat-sets" class="stat-list"></ul></section>
     </aside>
   </div>
 
   <footer>
     <span>小さな一歩も、ちゃんと残る。</span>
     <span id="offline" class="subtle" role="status">オフライン利用を準備しています…</span>
-    <span class="subtle">v0.6.1</span>
+    <span class="subtle">v0.7</span>
   </footer>
 </main>
 
@@ -129,6 +132,7 @@
   <li class="card">
     <div class="row">
       <button data-action="grip" class="grip" type="button" tabindex="0"><span aria-hidden="true">⠿</span></button>
+      <button data-action="delete" class="row-delete quiet-danger" type="button" hidden>削除</button>
       <button data-action="toggle" class="toggle" type="button"><span class="glyph" aria-hidden="true"></span></button>
       <button data-action="open" class="open" type="button">
         <span class="name"></span>
@@ -142,8 +146,10 @@
           <span class="meta-note"></span>
         </span>
       </button>
+      <button data-action="expand" class="expand" type="button" hidden></button>
     </div>
     <div class="bar" aria-hidden="true"><span></span></div>
+    <div class="set-actions" hidden><button data-action="add-child" type="button">＋ 子を追加</button><button data-action="details" type="button">セットの編集・操作</button></div>
   </li>
 </template>
 
@@ -178,6 +184,11 @@
       <p>「グループ」で分類を作り、編集画面で計測に割り当てます。グループを削除しても計測は消えず「未分類」へ移ります。</p>
       <p>「並べ替える」は選んだ条件をその時点で全件へ一度だけ適用します。適用後も行左端のハンドルをドラッグ、または上下キーで微調整できます。</p>
       <p>「統計」に、累計・グループ別の小計と割合・累計時間ランキングが出ます。横長で幅のある画面では一覧の右側に並びます。各計測が今持っている累計の集計で、開始と停止の履歴はまだ記録していません。</p>
+    </section>
+    <section>
+      <h3>セットと削除</h3>
+      <p>「＋ セット」で子ストップウォッチをまとめられます。親の名前か矢印で展開し、子を追加してください。同じセット内で子を開始すると、前の子は停止します。親の丸いボタンは前回の子を再開します。親の時間は子の合計です。</p>
+      <p>「削除モード」をオンにすると、一覧から直接削除できます。直後は「元に戻す」で取り消せます。次の記録変更・再読み込み後は取り消せません。セットの削除では子を残し、単独の計測へ戻します。</p>
     </section>
     <section>
       <h3>インストールとオフライン</h3>
@@ -230,6 +241,7 @@
     <button type="button" data-sheet="up">↑ 上へ移動</button>
     <button type="button" data-sheet="down">↓ 下へ移動</button>
     <button type="button" data-sheet="delete" class="quiet-danger">削除</button>
+    <button type="button" data-sheet="cascade" class="quiet-danger" hidden>子ごとすべて削除</button>
   </div>
   <div class="actions dialog-actions">
     <button type="button" id="sheet-close">閉じる</button>
@@ -239,6 +251,7 @@
 <dialog id="editor" aria-labelledby="editor-title">
   <form id="edit-form">
     <h2 id="editor-title">計測を編集</h2>
+    <label class="field" id="parent-field">所属セット<select name="parent"></select><span class="hint">セット内では1件ずつ計測し、グループは親に従います。</span></label>
     <label class="field">名前
       <input name="name" maxlength="80" required autocomplete="off" placeholder="例：勉強">
     </label>

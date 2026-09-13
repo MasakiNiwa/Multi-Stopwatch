@@ -16,7 +16,7 @@ export function statsTick(previous, { revision, second, running, force = false }
 }
 
 export function summarize(state, now) {
-  const timers = state.timers;
+  const timers = state.timers.filter(t => t.kind !== 'set');
   const totalMs = total(timers, now);
   // Every share divides by the same total, so an empty or all-zero state yields 0 instead of NaN.
   const share = ms => (totalMs > 0 ? ms / totalMs : 0);
@@ -35,7 +35,7 @@ export function summarize(state, now) {
     .map(timer => ({
       id: timer.id,
       name: timer.name,
-      groupName: timer.groupId === null ? UNGROUPED_NAME : (state.groups.find(g => g.id === timer.groupId)?.name ?? UNGROUPED_NAME),
+      groupName: [timer.groupId === null ? UNGROUPED_NAME : (state.groups.find(g => g.id === timer.groupId)?.name ?? UNGROUPED_NAME), state.timers.find(p => p.id === timer.parentId)?.name].filter(Boolean).join(' / '),
       ms: elapsed(timer, now),
     }))
     .sort((a, b) => b.ms - a.ms);
@@ -47,5 +47,10 @@ export function summarize(state, now) {
     row.share = share(row.ms);
   }
 
-  return { totalMs, runningCount: running(timers), timerCount: timers.length, groups, ranking };
+  const sets = state.timers.filter(t => t.kind === 'set').map(parent => {
+    const children = timers.filter(t => t.parentId === parent.id);
+    const ms = total(children, now);
+    return { id: parent.id, name: parent.name, totalMs: ms, share: share(ms), children: children.map(t => ({ name: t.name, ms: elapsed(t, now) })) };
+  }).sort((a, b) => b.totalMs - a.totalMs);
+  return { totalMs, runningCount: running(timers), timerCount: timers.length, groups, ranking, sets };
 }

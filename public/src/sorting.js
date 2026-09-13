@@ -1,6 +1,6 @@
 // One-shot bulk ordering. Pure: takes a state and returns the timers in a new order.
 // Every comparator returns 0 for equal values, so the stable sort keeps the previous order on ties.
-import { COLORS, elapsed, progress } from './model.js';
+import { COLORS, elapsed, progress, viewItem } from './model.js';
 
 export const SORTS = [
   { key: 'manual', label: '手動順のまま' },
@@ -19,8 +19,8 @@ export const SORTS = [
 const collator = new Intl.Collator('ja', { numeric: true, sensitivity: 'base' });
 
 function comparator(key, state, now) {
-  const time = timer => elapsed(timer, now);
-  const isRunning = timer => (timer.startedAt === null ? 0 : 1);
+  const time = timer => elapsed(viewItem(state, timer, now), now);
+  const isRunning = timer => (viewItem(state, timer, now).startedAt === null ? 0 : 1);
   // Timers without a goal have no progress to compare, so they always land at the end.
   const goalRank = timer => (timer.targetMs > 0 ? 0 : 1);
   const ratio = timer => progress(time(timer), timer.targetMs);
@@ -43,7 +43,20 @@ function comparator(key, state, now) {
 
 export function sortTimers(state, key, now) {
   const compare = comparator(key, state, now);
-  return compare === null ? state.timers : [...state.timers].sort(compare);
+  if (compare === null) return state.timers;
+  const scopes = new Map();
+  for (const t of state.timers) {
+    const key = t.parentId ?? null;
+    if (!scopes.has(key)) scopes.set(key, []);
+    scopes.get(key).push(t);
+  }
+  for (const items of scopes.values()) items.sort(compare);
+  const indices = new Map();
+  return state.timers.map(t => {
+    const key = t.parentId ?? null, index = indices.get(key) ?? 0;
+    indices.set(key, index + 1);
+    return scopes.get(key)[index];
+  });
 }
 // Applies to every timer, not just the ones a filter happens to show.
 export function applySort(state, key, now) {

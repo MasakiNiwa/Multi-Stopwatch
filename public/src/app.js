@@ -1,7 +1,8 @@
 // Wiring: owns the state, applies domain functions, persists, then asks the UI to redraw.
 import {
-  createTimer, elapsed, start, stop, reset, setElapsed, move, matches, running, total, format, emptyState,
+  createTimer, elapsed, stop, reset, setElapsed, matches, running, total, format, emptyState,
   addGroup, renameGroup, removeGroup, groupName, groupNameError, MAX_TIMERS,
+  createSet, MAX_SETS, childrenOf, siblingsOf, viewItem, toggleItem, moveSibling, removeItem, editItem,
 } from './model.js';
 import { load, save, readState, KEY, loadPrefs, savePrefs, THEMES } from './storage.js';
 import { summarize, statsTick } from './stats.js';
@@ -12,6 +13,9 @@ const $ = selector => document.querySelector(selector);
 let state, shown = [], groups = new Map(), query = '', draft = null, editing = null, sheetId = null, readOnly = false, ownsLock = false;
 // Bumped on every saved change so the statistics can redraw immediately instead of waiting a second.
 let revision = 0, statsMarker = null;
+const expanded = new Set();
+let deleting = false, undoState = null;
+const timerCount = () => state.timers.filter(t => t.kind === 'timer').length;
 const editable = () => !readOnly && ownsLock;
 const reorderable = () => query.trim() === '';
 const find = id => state.timers.find(t => t.id === id);
@@ -68,13 +72,25 @@ function render() {
   // The filter box hides below six timers; a query left behind would silently keep rows out of view.
   if (state.timers.length < 6 && query !== '') { query = ''; $('#filter').value = ''; }
   groups = new Map(state.groups.map(group => [group.id, group.name]));
-  shown = state.timers.filter(timer => matches(timer, query));
-  ui.sync(shown, { editable: editable(), reorderable: reorderable() });
+  shown = [];
+  const visibleExpanded = new Set(expanded);
+  for (const item of state.timers.filter(t => t.parentId === null)) {
+    const children = item.kind === 'set' ? childrenOf(state, item.id) : [];
+    const matchingChildren = children.filter(t => matches(t, query));
+    const parentMatches = matches(item, query);
+    if (!parentMatches && matchingChildren.length === 0) continue;
+    shown.push(item);
+    if (query.trim() && children.length) visibleExpanded.add(item.id);
+    if (visibleExpanded.has(item.id)) shown.push(...(query.trim() && !parentMatches ? matchingChildren : children));
+  }
+  ui.sync(shown, { editable: editable(), reorderable: reorderable(), expanded: visibleExpanded, deleting, canAdd: timerCount() < MAX_TIMERS });
   ui.setListState({
     hasTimers: state.timers.length > 0, shown: shown.length, count: state.timers.length,
     filtering: query.trim() !== '', editable: editable(),
   });
-  $('#add').disabled = !editable() || state.timers.length >= MAX_TIMERS;
+  $('#add').disabled = !editable() || timerCount() >= MAX_TIMERS;
+  $('#add-set').disabled = !editable() || state.timers.filter(t => t.kind === 'set').length >= MAX_SETS;
+  $('#delete-mode').disabled = !editable();
   $('#stop-all').disabled = !editable() || running(state.timers) === 0;
   $('#import').disabled = !editable();
   if (ui.groupsOpen()) ui.renderGroupList(state);
@@ -85,7 +101,7 @@ const refresh = () => tick(true);
 function tick(force = false) {
   if (document.hidden) return;
   const now = Date.now();
-  ui.paint(shown, state.timers, now, groups);
+  ui.paint(shown.map(t => viewItem(state, t, now)), state.timers, now, groups);
   if (ui.statsVisible()) {
     // Throttle on the second the headline total will show, so the panel never lags the hero.
     const second = Math.floor(total(state.timers, now) / 1000);
@@ -95,21 +111,36 @@ function tick(force = false) {
   } else {
     statsMarker = null; // A hidden panel holds stale content; redraw it when it comes back.
   }
-  if (sheetId) ui.paintSheet(find(sheetId), now, sheetPosition());
+  if (sheetId) ui.paintSheet(viewItem(state, find(sheetId), now), now, sheetPosition());
 }
-function commit(next) {
+function commit(next, { keepUndo = false } = {}) {
   if (!editable()) return false;
-  try { save(localStorage, next); state = next; revision += 1; render(); return true; }
+  try { save(localStorage, next); state = next; revision += 1; if (!keepUndo) clearUndo(); render(); return true; }
   catch { ui.notice('保存できませんでした。操作は反映していません。空き容量やブラウザの保存設定を確認してください。', { sticky: true }); return false; }
 }
 const update = (id, fn) => commit({ ...state, timers: state.timers.map(t => (t.id === id ? fn(t) : t)) });
 
 /* ---------- toolbar and filter ---------- */
-$('#add').onclick = () => {
-  draft = createTimer(crypto.randomUUID(), '');
+function newItem(kind = 'timer', parentId = null) {
+  if (!editable() || (kind === 'timer' ? timerCount() >= MAX_TIMERS : state.timers.filter(t => t.kind === 'set').length >= MAX_SETS)) return;
+  draft = kind === 'set' ? createSet(crypto.randomUUID()) : { ...createTimer(crypto.randomUUID(), ''), parentId, groupId: find(parentId)?.groupId ?? null };
   editing = { ...draft, snapshotMs: 0 };
-  ui.fillGroupSelect(state, null);
+  ui.fillGroupSelect(state, draft.groupId);
+  ui.fillParentSelect(state, draft);
   ui.openEditor(draft, true);
+}
+$('#add').onclick = () => newItem();
+$('#add-set').onclick = () => newItem('set');
+$('#delete-mode').onclick = () => {
+  deleting = !deleting;
+  $('#delete-mode').setAttribute('aria-pressed', String(deleting));
+  $('#delete-mode').textContent = deleting ? '削除を終了' : '削除モード';
+  render();
+};
+function clearUndo() { undoState = null; $('#undo-delete').hidden = true; }
+$('#dismiss-undo').onclick = clearUndo;
+$('#undo').onclick = () => {
+  if (undoState && commit(undoState)) ui.notice('削除を取り消しました。');
 };
 $('#stop-all').onclick = () => {
   const now = Date.now(), count = running(state.timers);
@@ -119,7 +150,13 @@ $('#filter').oninput = event => { query = event.target.value; render(); };
 
 /* ---------- rows ---------- */
 function toggle(id) {
-  update(id, t => (t.startedAt === null ? start(t, Date.now()) : stop(t, Date.now())));
+  if (!editable()) return;
+  const next = toggleItem(state, id, Date.now());
+  if (next === state && find(id)?.kind === 'set') {
+    expanded.add(id); render();
+    ui.notice('計測する子を選んでください。子がなければ「＋ 子を追加」から追加できます。');
+    if (ui.sheetOpen()) ui.closeSheet();
+  } else commit(next);
 }
 async function askReset(timer) {
   return ui.ask({
@@ -128,16 +165,13 @@ async function askReset(timer) {
     confirmLabel: 'リセットする',
   });
 }
-async function askDelete(timer) {
-  return ui.ask({
-    title: 'この計測を削除しますか？',
-    message: `「${timer.name}」（${format(elapsed(timer, Date.now()))}）の記録を削除します。元には戻せません。`,
-    confirmLabel: '削除する',
-  });
-}
-function remove(timer) {
-  if (commit({ ...state, timers: state.timers.filter(t => t.id !== timer.id) })) {
-    ui.notice(`「${timer.name}」を削除しました。`);
+function remove(timer, cascade = false) {
+  const before = state;
+  if (commit(removeItem(state, timer.id, cascade), { keepUndo: true })) {
+    undoState = before;
+    $('#undo-delete').hidden = false;
+    $('#undo-delete span').textContent = `「${timer.name}」を削除${timer.kind === 'set' && !cascade ? '（子は残しました）' : ''}`;
+    ui.announce('削除しました。「元に戻す」で取り消せます。');
     $('#add').focus();
   }
 }
@@ -146,17 +180,24 @@ $('#timers').onclick = event => {
   if (!button) return;
   const id = button.closest('.card').dataset.id;
   // Reading a timer's details stays available in a read-only window; only the actions inside are locked.
-  if (button.dataset.action === 'open') openSheetFor(id);
+  const action = button.dataset.action;
+  if (action === 'expand' || (action === 'open' && find(id)?.kind === 'set')) {
+    if (expanded.has(id)) expanded.delete(id); else expanded.add(id);
+    render();
+  }
+  if (action === 'details' || (action === 'open' && find(id)?.kind !== 'set')) openSheetFor(id);
+  if (action === 'add-child') newItem('timer', id);
+  if (action === 'delete' && deleting && editable() && find(id)) remove(find(id));
   if (button.dataset.action === 'toggle' && editable()) toggle(id);
 };
 
 /* ---------- detail sheet ---------- */
-const sheetPosition = () => ({ index: indexOf(sheetId), count: state.timers.length, editable: editable(), state });
+const sheetPosition = () => ({ index: siblingsOf(state, sheetId).findIndex(t => t.id === sheetId), count: siblingsOf(state, sheetId).length, editable: editable(), state });
 function openSheetFor(id) {
   if (!find(id)) return;
   sheetId = id;
   ui.openSheet(); // Open first: paintSheet only fills a sheet that is already showing.
-  ui.paintSheet(find(id), Date.now(), sheetPosition());
+  ui.paintSheet(viewItem(state, find(id), Date.now()), Date.now(), sheetPosition());
 }
 $('#sheet').addEventListener('close', () => { sheetId = null; });
 $('#sheet-close').onclick = () => ui.closeSheet();
@@ -168,15 +209,15 @@ $('#sheet').addEventListener('click', async event => {
   if (!timer) return;
   const action = button.dataset.sheet;
   if (action === 'up' || action === 'down') {
-    const from = indexOf(timer.id), to = from + (action === 'up' ? -1 : 1);
-    if (commit({ ...state, timers: move(state.timers, from, to) })) ui.announce(`${timer.name}を${to + 1}番目へ移動しました`);
+    if (commit(moveSibling(state, timer.id, action === 'up' ? -1 : 1))) ui.announce(`${timer.name}を移動しました`);
     return;
   }
   // The remaining actions open their own dialog or leave the row behind, so the sheet steps aside first.
   ui.closeSheet();
   if (action === 'edit') openEditorFor(timer);
   if (action === 'reset' && await askReset(timer)) update(timer.id, reset);
-  if (action === 'delete' && await askDelete(timer)) remove(timer);
+  if (action === 'delete') remove(timer);
+  if (action === 'cascade' && await ui.ask({ title: '子ごと削除しますか？', message: `「${timer.name}」と子${childrenOf(state, timer.id).length}件を削除します。`, confirmLabel: '子ごと削除する' })) remove(timer, true);
 });
 
 /* ---------- drag and keyboard reordering ---------- */
@@ -188,7 +229,7 @@ function positionDrag(clientY) {
   drag.card.style.transform = `translateY(${drag.dy}px)`;
   const rect = drag.card.getBoundingClientRect(), middle = rect.top + rect.height / 2;
   for (const other of [...list.children]) {
-    if (other === drag.card) continue;
+    if (other === drag.card || find(other.dataset.id)?.parentId !== find(drag.card.dataset.id)?.parentId) continue;
     const box = other.getBoundingClientRect();
     if (middle <= box.top || middle >= box.bottom) continue;
     const before = rect.top - drag.dy;
@@ -216,11 +257,13 @@ function endDrag(keep) {
   edgeTimer = 0;
   drag.card.classList.remove('dragging');
   drag.card.style.transform = '';
-  const order = [...$('#timers').children].map(row => row.dataset.id);
+  const parentId = find(drag.card.dataset.id).parentId;
+  const order = [...$('#timers').children].map(row => row.dataset.id).filter(id => find(id)?.parentId === parentId);
   drag = null;
   if (!keep) { render(); return; }
   const byId = new Map(state.timers.map(t => [t.id, t]));
-  const timers = order.map(id => byId.get(id)).filter(Boolean);
+  let cursor = 0;
+  const timers = state.timers.map(t => t.parentId === parentId ? byId.get(order[cursor++]) : t);
   if (timers.length !== state.timers.length || !commit({ ...state, timers })) render();
   else ui.announce('並べ替えを保存しました');
 }
@@ -228,6 +271,8 @@ $('#timers').addEventListener('pointerdown', event => {
   const grip = event.target.closest('[data-action="grip"]');
   if (!grip || grip.disabled || drag || event.button > 0) return;
   event.preventDefault();
+  // Collapse the hierarchy during a parent drag, so children cannot be visually separated.
+  if (find(grip.closest('.card').dataset.id)?.parentId === null) { expanded.clear(); render(); }
   grip.setPointerCapture(event.pointerId);
   drag = { card: grip.closest('.card'), pointerId: event.pointerId, startY: event.clientY, lastY: event.clientY, dy: 0 };
   drag.card.classList.add('dragging');
@@ -247,13 +292,14 @@ $('#timers').addEventListener('keydown', event => {
   const id = grip.closest('.card').dataset.id, from = indexOf(id), to = from + step;
   if (to < 0 || to >= state.timers.length) return;
   // sync keeps the focus on this grip, so holding the arrow key keeps moving the same row.
-  if (commit({ ...state, timers: move(state.timers, from, to) })) ui.announce(`${find(id).name}を${to + 1}番目へ移動しました`);
+  if (commit(moveSibling(state, id, step))) ui.announce(`${find(id).name}を移動しました`);
 });
 
 /* ---------- editor ---------- */
 function openEditorFor(timer) {
   editing = { ...timer, snapshotMs: elapsed(timer, Date.now()) };
   ui.fillGroupSelect(state, timer.groupId);
+  ui.fillParentSelect(state, timer);
   ui.openEditor({ ...timer, elapsedMs: editing.snapshotMs }, false);
 }
 ui.selectOnFocus($('#editor'));
@@ -277,17 +323,26 @@ $('#edit-form').onsubmit = event => {
   const base = editing;
   // The elapsed fields start at the value shown when the dialog opened; an untouched field must not
   // freeze a running timer, so only an actual edit is applied.
-  const changed = values.elapsedMs !== Math.floor(base.snapshotMs / 1000) * 1000;
+  const changed = base.kind !== 'set' && values.elapsedMs !== Math.floor(base.snapshotMs / 1000) * 1000;
   const apply = t => {
     const edited = { ...t, name: values.name, memo: values.memo, color: values.color, targetMs: values.targetMs, groupId: values.groupId };
     return changed ? setElapsed(edited, values.elapsedMs, Date.now()) : edited;
   };
   if (draft) {
     const created = apply(draft);
-    if (commit({ ...state, timers: [...state.timers, created] })) { ui.closeEditor(); ui.focusRow(created.id); }
-  } else if (update(base.id, apply)) {
-    ui.closeEditor();
-    ui.focusRow(base.id);
+    const parentId = $('#edit-form').elements.parent.value || null;
+    const next = editItem({ ...state, timers: [...state.timers, created] }, created.id, {}, parentId, Date.now());
+    if (commit(next)) {
+      ui.closeEditor();
+      if (created.kind === 'set') expanded.add(created.id);
+      if (parentId) expanded.add(parentId);
+      render(); ui.focusRow(created.id);
+    }
+  } else {
+    const parentId = $('#edit-form').elements.parent.value || null;
+    if (commit(editItem(state, base.id, apply(find(base.id)), parentId, Date.now()))) {
+      ui.closeEditor(); if (parentId) expanded.add(parentId); render(); ui.focusRow(base.id);
+    }
   }
 };
 
@@ -420,6 +475,7 @@ window.addEventListener('storage', event => {
   if (event.key !== KEY && event.key !== null) return;
   try {
     state = load(localStorage);
+    clearUndo();
     revision += 1;
     if (ui.editorOpen()) ui.closeEditor();
     if (ui.sheetOpen()) ui.closeSheet();
