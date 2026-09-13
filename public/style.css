@@ -82,6 +82,17 @@ button { -webkit-tap-highlight-color: transparent; }
 main { width: min(760px, 100%); margin: auto; padding: 24px max(16px, env(safe-area-inset-left)) calc(48px + env(safe-area-inset-bottom)); }
 
 /* Header */
+.undo-delete { position: fixed; z-index: 15; bottom: calc(94px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: min(620px, calc(100% - 24px)); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; background: var(--secondary-container); color: var(--on-secondary-container); border: 1px solid var(--outline-variant); border-radius: var(--r-m); box-shadow: var(--shadow-dialog); }
+.undo-delete span { flex: 1 1 140px; font-size: 13px; overflow-wrap: anywhere; }
+.card[data-child="true"] { margin-left: 12px; border-left: 2px solid var(--outline-variant); }
+.expand { flex: none; width: 44px; min-width: 44px; padding: 0; background: transparent; }
+.row-delete { flex: none; min-width: 44px; padding: 0 4px; }
+.set-actions { display: flex; gap: 6px; padding: 4px 8px 8px; flex-wrap: wrap; }
+.set-actions button { font-size: 12px; }
+.card[data-kind="set"] > .row .name::before { content: "セット · "; color: var(--on-surface-variant); font-size: 11px; }
+.card[data-kind="set"] .meta-note { min-width: 0; }
+.tools > .tools-row:first-child { justify-content: space-between; margin-bottom: 6px; }
+#delete-mode[aria-pressed="true"] { background: var(--error-container); color: var(--on-error-container); }
 .intro { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
 /* The original focus-ring mark is the brand source of truth. Its colours follow the selected
    app theme here; favicon and install assets use the same geometry with the light brand pair. */
@@ -180,6 +191,12 @@ body[data-layout="split"] .columns { grid-template-columns: minmax(0,1fr) minmax
 .card[data-length="long"] .time .digits { font-size: 17px; }
 .time u { margin: 0 .14em 0 .03em; color: var(--on-surface-variant); font-size: .55em; font-style: normal; font-weight: 600; text-decoration: none; letter-spacing: 0; }
 .time .sec { color: var(--on-surface-variant); }
+/* A set has one extra control. Give its name a full line instead of squeezing it to an ellipsis. */
+.card[data-kind="set"] .open { grid-template-columns: minmax(0,1fr); }
+.card[data-kind="set"] .name { grid-column: 1; grid-row: 1; }
+.card[data-kind="set"] .time { grid-column: 1; grid-row: 2; }
+.card[data-kind="set"] .time .digits { font-size: 18px; }
+.card[data-kind="set"] .meta { grid-row: 3; }
 .bar { height: 3px; overflow: hidden; background: var(--surface-container-highest); }
 .bar span { display: block; width: 0; height: 100%; background: var(--color); transition: width .3s ease; }
 

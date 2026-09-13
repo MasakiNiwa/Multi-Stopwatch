@@ -10,7 +10,7 @@ function text(node, value) {
 }
 
 // Rebuild only what changed. Rows keep their identity so focus, scrolling and a drag survive an update.
-export function sync(timers, { editable, reorderable }) {
+export function sync(timers, { editable, reorderable, expanded = new Set(), deleting = false, canAdd = true }) {
   const list = $('#timers');
   // Moving a node in the DOM drops focus. Remember it so repeated key presses keep working.
   const focused = list.contains(document.activeElement) ? document.activeElement : null;
@@ -20,11 +20,26 @@ export function sync(timers, { editable, reorderable }) {
     existing.delete(t.id);
     row.dataset.id = t.id;
     row.dataset.color = t.color;
+    row.dataset.kind = t.kind;
+    row.dataset.child = String(t.parentId !== null);
+    const isSet = t.kind === 'set', isExpanded = expanded.has(t.id);
+    const expand = row.querySelector('[data-action="expand"]');
+    expand.hidden = !isSet;
+    expand.textContent = isExpanded ? '⌃' : '⌄';
+    expand.setAttribute('aria-label', `${t.name}の子を${isExpanded ? '折りたたむ' : '表示'}`);
+    expand.setAttribute('aria-expanded', String(isExpanded));
+    row.querySelector('.set-actions').hidden = !isSet || !isExpanded;
+    row.querySelector('[data-action="add-child"]').disabled = !editable || !canAdd;
+    const del = row.querySelector('[data-action="delete"]');
+    del.hidden = !deleting;
+    del.disabled = !editable;
+    del.setAttribute('aria-label', `${t.name}を削除`);
     const name = row.querySelector('.name');
     text(name, t.name);
     name.title = t.name; // The row shows one line; the full name stays reachable on hover.
-    row.querySelector('[data-action="open"]').setAttribute('aria-label', `${t.name}の詳細と操作`);
+    row.querySelector('[data-action="open"]').setAttribute('aria-label', `${t.name}の${isSet ? '子を表示・折りたたみ' : '詳細と操作'}`);
     const grip = row.querySelector('[data-action="grip"]');
+    grip.hidden = deleting;
     grip.setAttribute('aria-label', `${t.name}を並べ替え。上下キーで移動できます`);
     grip.disabled = !editable || !reorderable;
     grip.title = reorderable ? 'ドラッグ、または上下キーで並べ替え' : '絞り込み中は並べ替えできません';
@@ -59,7 +74,7 @@ export function paint(shown, all, now, groups = new Map()) {
     bar.hidden = t.targetMs === 0;
     if (t.targetMs > 0) bar.firstElementChild.style.width = `${progress(ms, t.targetMs) * 100}%`;
     text(row.querySelector('.meta-group'), groups.get(t.groupId) ?? '');
-    text(row.querySelector('.meta-note'), noteFor(t, ms));
+    text(row.querySelector('.meta-note'), t.kind === 'set' ? t.childNote : noteFor(t, ms));
   });
   const count = running(all);
   text($('#total'), format(total(all, now)));
@@ -121,6 +136,9 @@ function syncStatList(list, rows) {
 
 // Called only when statsTick says the visible numbers moved, so this rebuild runs at most once a second.
 export function paintStats(summary) {
+  $('#stat-set-block').hidden = summary.sets.length === 0;
+  syncStatList($('#stat-sets'), summary.sets.map(row => ({ key: row.id, rank: '', name: row.name,
+    time: format(row.totalMs), share: row.share, sub: row.children.map(c => `${c.name} ${format(c.ms)}`).join(' / ') || '子がありません' })));
   text($('#stat-total'), format(summary.totalMs));
   text($('#stat-running'), `${summary.runningCount} / ${summary.timerCount}`);
   const empty = summary.timerCount === 0;
@@ -251,7 +269,9 @@ export function paintSheet(timer, now, { index, count, editable, state }) {
   text($('#sheet-memo'), timer.memo);
   $('#sheet-toggle').disabled = !editable;
   for (const action of ['edit', 'delete']) $(`[data-sheet="${action}"]`).disabled = !editable;
-  $('[data-sheet="reset"]').disabled = !editable || ms === 0;
+  $('[data-sheet="reset"]').disabled = !editable || ms === 0 || timer.kind === 'set';
+  $('[data-sheet="cascade"]').hidden = timer.kind !== 'set';
+  $('[data-sheet="cascade"]').disabled = !editable;
   $('[data-sheet="up"]').disabled = !editable || index <= 0;
   $('[data-sheet="down"]').disabled = !editable || index === count - 1;
 }
@@ -284,7 +304,7 @@ export function setTarget(minutes) {
 }
 export function openEditor(timer, isNew) {
   const form = $('#edit-form'), f = form.elements;
-  text($('#editor-title'), isNew ? '計測を追加' : '計測を編集');
+  text($('#editor-title'), `${timer.kind === 'set' ? 'セット' : '計測'}を${isNew ? '追加' : '編集'}`);
   text($('#edit-error'), '');
   f.name.value = timer.name;
   f.memo.value = timer.memo;
@@ -292,11 +312,11 @@ export function openEditor(timer, isNew) {
   f.targetH.value = Math.floor(timer.targetMs / 3600000);
   f.targetM.value = Math.floor(timer.targetMs / 60000) % 60;
   markPresets(timer.targetMs);
-  const { h, m, s } = parts(timer.elapsedMs);
+  const { h, m, s } = parts(timer.elapsedMs ?? 0);
   f.elapsedH.value = Number(h); f.elapsedM.value = Number(m); f.elapsedS.value = Number(s);
   // The correction stays folded away during an ordinary edit, with the current value on show.
   const correction = $('#elapsed-fields');
-  correction.hidden = isNew;
+  correction.hidden = isNew || timer.kind === 'set';
   correction.open = false;
   text($('#elapsed-current'), `現在 ${format(timer.elapsedMs)}`);
   $('#editor').showModal();
@@ -332,6 +352,19 @@ export function readEditor() {
 }
 
 export function closeEditor() { $('#editor').close(); }
+export function fillParentSelect(state, timer) {
+  const f = $('#edit-form').elements;
+  $('#parent-field').hidden = timer.kind === 'set';
+  f.parent.replaceChildren(new Option('単独の計測', ''), ...state.timers.filter(t => t.kind === 'set').map(t => new Option(t.name, t.id)));
+  f.parent.value = timer.parentId ?? '';
+  const updateGroup = () => {
+    const parent = state.timers.find(t => t.id === f.parent.value);
+    f.group.disabled = timer.kind !== 'set' && Boolean(parent);
+    if (parent && timer.kind !== 'set') f.group.value = parent.groupId ?? '';
+  };
+  f.parent.onchange = updateGroup;
+  updateGroup();
+}
 export function editorOpen() { return $('#editor').open; }
 export function focusRow(id, action = 'toggle') {
   requestAnimationFrame(() => document.querySelector(`.card[data-id="${id}"] [data-action="${action}"]`)?.focus());

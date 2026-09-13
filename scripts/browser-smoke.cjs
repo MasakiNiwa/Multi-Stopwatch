@@ -41,7 +41,7 @@ const v1Record = {
   await page.goto(base);
   await ready(page);
 
-  // A v1 record opens, keeps running, and is only rewritten as v2 once something is saved.
+  // A v1 record opens, keeps running, and is only rewritten as v3 once something is saved.
   await page.evaluate(record => localStorage.setItem('multi-stopwatch:state:v1', JSON.stringify(record)), v1Record);
   await page.reload();
   await ready(page);
@@ -50,7 +50,7 @@ const v1Record = {
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('multi-stopwatch:state:v1')).version), 1);
   await page.getByRole('button', { name: '移行した読書を開始' }).click();
   const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem('multi-stopwatch:state:v1')));
-  assert.equal(migrated.version, 2);
+  assert.equal(migrated.version, 3);
   assert.deepEqual(migrated.groups, []);
   assert.deepEqual(migrated.timers.map(t => t.groupId), [null, null]);
   assert.deepEqual(migrated.timers.map(t => t.elapsedMs), v1Record.timers.map(t => t.elapsedMs));
@@ -233,7 +233,7 @@ const v1Record = {
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark');
   await page.getByRole('button', { name: '資格の勉強を停止' }).click();
   assert.equal(await page.locator('.state-text').first().textContent(), '停止中');
-  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('multi-stopwatch:state:v1')).version), 2);
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('multi-stopwatch:state:v1')).version), 3);
 
   // Help: opens from the header, carries the backup controls, closes on Escape, returns focus.
   assert.equal(await page.locator('#help').evaluate(element => getComputedStyle(element).display), 'none', '閉じたヘルプが本文として表示されないこと');
@@ -298,6 +298,108 @@ const v1Record = {
   await page.setViewportSize({ width: 390, height: 844 });
 
   assert.deepEqual(errors, []);
+  // v0.7: use a fresh context so existing regression fixtures remain independent.
+  await context.close();
+  const setsContext = await browser.newContext({ viewport: { width: 390, height: 844 }, colorScheme: 'light' });
+  const setsPage = await setsContext.newPage();
+  setsPage.on('pageerror', e => errors.push(String(e)));
+  await setsPage.goto(base); await ready(setsPage);
+  const record = () => setsPage.evaluate(() => JSON.parse(localStorage.getItem('multi-stopwatch:state:v1')));
+  async function addChild(name) {
+    await setsPage.locator('[data-action="add-child"]:visible').click();
+    await setsPage.locator('#edit-form [name=name]').fill(name);
+    await setsPage.getByRole('button', { name:'保存', exact:true }).click();
+    await setsPage.getByRole('button', {name:`${name}を開始`,exact:true}).waitFor();
+  }
+  await setsPage.locator('#add-set').click();
+  await setsPage.locator('#edit-form [name=name]').fill('資格勉強');
+  await setsPage.getByRole('button', {name:'保存',exact:true}).click();
+  await addChild('テキスト'); await addChild('問題演習');
+  await setsPage.getByRole('button', {name:'テキストを開始',exact:true}).click();
+  await setsPage.getByRole('button', {name:'問題演習を開始',exact:true}).click();
+  let data = await record();
+  assert.equal(data.timers.filter(t=>t.kind==='timer' && t.startedAt!==null).length, 1);
+  assert.equal(data.timers.find(t=>t.name==='テキスト').startedAt, null);
+  assert.equal(data.timers.find(t=>t.name==='資格勉強').lastChildId, data.timers.find(t=>t.name==='問題演習').id);
+  await setsPage.getByRole('button', {name:'資格勉強を停止',exact:true}).click();
+  await setsPage.getByRole('button', {name:'資格勉強を開始',exact:true}).click();
+  assert.notEqual((await record()).timers.find(t=>t.name==='問題演習').startedAt, null);
+  await setsPage.locator('[data-action=expand]:visible').click();
+  assert.equal(await setsPage.locator('.card').count(),1);
+  await setsPage.reload(); await ready(setsPage);
+  assert.equal(await setsPage.locator('.card').count(),1);
+  await setsPage.locator('[data-action=expand]:visible').click();
+  assert.equal(await setsPage.locator('.card').count(),3);
+  await setsPage.locator('#stop-all').click();
+  await setsPage.screenshot({ path:'test-results/visual/sets-light.png',fullPage:true });
+  await setsPage.locator('#theme-toggle').click();
+  await setsPage.waitForTimeout(200); // Let the 150ms theme transition settle before visual review.
+  await setsPage.screenshot({ path:'test-results/visual/sets-dark.png',fullPage:true });
+  await setsPage.locator('#tab-stats').click();
+  assert.equal(await setsPage.locator('#stat-ranking .stat-item').count(),2);
+  assert.equal(await setsPage.locator('#stat-sets .stat-item').count(),1);
+  assert.equal(await setsPage.locator('#stat-total').textContent(),await setsPage.locator('#stat-sets .stat-time').textContent());
+  await setsPage.locator('#tab-timers').click();
+  // Direct delete and undo preserve the complete family and running state.
+  await setsPage.locator('#delete-mode').click();
+  await setsPage.getByRole('button',{name:'テキストを削除',exact:true}).click();
+  assert.equal((await record()).timers.length,2);
+  await setsPage.locator('#undo').click();
+  assert.equal((await record()).timers.length,3);
+  await setsPage.getByRole('button',{name:'資格勉強を削除',exact:true}).click();
+  assert.equal((await record()).timers.every(t=>t.parentId===null),true);
+  await setsPage.locator('#undo').click();
+  assert.equal((await record()).timers.filter(t=>t.parentId!==null).length,2);
+  await setsPage.getByRole('button',{name:'テキストを削除',exact:true}).click();
+  await setsPage.getByRole('button',{name:'問題演習を開始',exact:true}).click();
+  assert.equal(await setsPage.locator('#undo-delete').isVisible(),false,'a subsequent record change invalidates undo');
+  await setsPage.locator('#delete-mode').click();
+  // Editing a child can detach it; the old parent no longer resumes a foreign child.
+  await openSheet(setsPage,'問題演習');
+  await setsPage.getByRole('button',{name:'編集',exact:true}).click();
+  await setsPage.locator('#edit-form [name=parent]').selectOption('');
+  await setsPage.getByRole('button',{name:'保存',exact:true}).click();
+  assert.equal((await record()).timers.find(t=>t.kind==='set').lastChildId,null);
+  await setsPage.locator('#stop-all').click();
+  for (const [width,height] of [[320,844],[844,390],[1280,900]]) {
+    await setsPage.setViewportSize({width,height});
+    assert.equal(await setsPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`sets overflow at ${width}`);
+    await setsPage.screenshot({path:`test-results/visual/sets-${width}.png`,fullPage:true});
+  }
+  await setsContext.setOffline(true);
+  await setsPage.reload();
+  await setsPage.locator('.card').first().waitFor();
+  assert.equal(await setsPage.locator('#help').isVisible(),false);
+  // A second page cannot edit or delete while the writer still owns its lock.
+  const viewer = await setsContext.newPage(); await viewer.goto(base);
+  await viewer.getByText(/別の画面で開いているため閲覧専用/).waitFor();
+  assert.equal(await viewer.locator('#delete-mode').isDisabled(),true);
+  assert.equal(await viewer.locator('#add-set').isDisabled(),true);
+  await viewer.close();
+  await setsContext.setOffline(false);
+  // Large hierarchy: only parents take space until expanded; search keeps matching parent context.
+  await setsPage.evaluate(() => {
+    const timers = [];
+    for (let p=0;p<10;p++) {
+      timers.push({id:`set-${p}`,kind:'set',parentId:null,name:`資格勉強 ${p}`,memo:'',color:'mint',groupId:null,targetMs:0,lastChildId:null});
+      for (let c=0;c<5;c++) timers.push({id:`child-${p}-${c}`,kind:'timer',parentId:`set-${p}`,name:`演習 ${p}-${c}`,memo:'',color:'mint',groupId:null,targetMs:0,elapsedMs:60000,startedAt:null});
+    }
+    localStorage.setItem('multi-stopwatch:state:v1',JSON.stringify({version:3,timers,groups:[]}));
+  });
+  await setsPage.setViewportSize({width:390,height:844});
+  await setsPage.reload(); await ready(setsPage);
+  assert.equal(await setsPage.locator('.card').count(),10);
+  const parentDensity = await setsPage.locator('.card').evaluateAll(rows => rows.filter(row=>{
+    const r=row.getBoundingClientRect(), bottom=document.querySelector('.toolbar').getBoundingClientRect().top;
+    return r.top>=0 && r.bottom<=bottom;
+  }).length);
+  assert.ok(parentDensity>=4,`only ${parentDensity} collapsed parents visible`);
+  await setsPage.locator('#filter').fill('演習 3-2');
+  assert.deepEqual(await names(setsPage),['資格勉強 3','演習 3-2']);
+  await setsPage.locator('#filter').fill('');
+  await setsPage.screenshot({path:'test-results/visual/sets-dense.png',fullPage:true});
+  assert.deepEqual(errors,[]);
+  await setsContext.close();
   await browser.close();
-  console.log(`PASS: v1→v2 migration, groups CRUD, statistics, bulk sort, compact list (${density} rows, ${smallest}px targets), tabs/split layout, one-button theme + persistence, help dialog, icon set, offline start, no browser errors`);
+  console.log(`PASS: v1→v3 migration, groups, statistics, sorting, compact list (${density} rows, ${smallest}px targets), theme, help, icons, offline; sets, exclusive switch, resume, undo, detach, 10-set/50-timer density, search and writer lock`);
 })().catch(error => { console.error(error); process.exit(1); });

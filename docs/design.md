@@ -27,6 +27,24 @@
 
 ## 構造
 
+### v0.7 / schema v3（最新）
+
+`{ version: 3, timers: [...], groups: [...] }`。配列名は既存の `timers` を維持し、各要素の `kind: 'timer' | 'set'` で区別する。Issue #8の `items` への改名案から変更した。既存の保存・順序・UIの接続を保つため。
+
+- timer: 従来のフィールド＋`kind: 'timer'`, `parentId: null | setId`
+- set: `id, kind: 'set', parentId: null, name, memo, color, targetMs, groupId, lastChildId`
+- setにelapsedMs/startedAtを保存しない。`viewItem` の表示専用投影がaggregateMsと稼働状態を計算し、投影の保存はvalidationで拒否する
+- v1/v2の既存timerはすべて単独timerへ移行し、時間・順序・稼働時刻・groupIdを維持する。v3を出力し、v1/v2/v3を復元可能
+- 同じ親の子は最大1件稼働。切替・稼働中の所属変更は同じnowで停止／開始し、一度の保存で反映する
+- 子のgroupIdは親に従う。親のグループ変更は全子へ適用し、単独化ではグループを保持する
+- 全体とランキングはtimerだけ。set小計を再加算しない。各timerは10年上限、set小計は子の合計のため10年では切り捨てない
+- 順序は配列内の兄弟の相対順。描画時に親→子へまとめる。一括sort・上下キー・ドラッグは兄弟内のみ。所属変更は編集画面で行う
+- 親は初期折りたたみ。検索時には一致する子の親も表示する。親操作の履歴がなければ子選択を促す
+- 削除モードはセッション内のみ。直接削除後はメモリ上の直前stateから1回取り消せる。次の記録変更／外部storageイベント／再読込で無効になる。保存失敗では元stateと取り消しを維持する
+- セットの既定削除は子を単独化。全削除は別の確認付き操作。親のリセットは初版では提供しない
+
+以下は旧版からの設計経緯。保存版の現行契約は上記v3を優先する。
+
 ビルド不要のES Modules。public/src/model.jsは純粋関数で時刻を引数に受け取る。storage.jsはschema v1の保存契約、app.jsはイベント・状態、ui.jsは描画とダイアログ、style.cssはデザイン変数。PWA登録・import/exportは現状app.jsに置き、必要になった段階で分割する。汎用プラグイン基盤を先回りで作らない。
 
 app.jsとui.jsの分割は、初版UIの実装でDOM操作が状態管理を上回った段階で行った（2026-09-13 / Claude）。ui.jsはアプリの状態を持たず、渡された配列を描画するだけにして、計測ロジックとの境界を保つ。

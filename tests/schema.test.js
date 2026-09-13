@@ -16,7 +16,7 @@ const v1Fixture = () => ({
   ],
 });
 
-test('v1 migrates to v2 without losing time, running state or order', () => {
+test('v1 migrates to current schema without losing time, running state or order', () => {
   const before = v1Fixture();
   const after = validate(migrate(before));
   assert.equal(after.version, SCHEMA_VERSION);
@@ -38,7 +38,7 @@ test('v1 migrates to v2 without losing time, running state or order', () => {
 test('migration is idempotent and refuses schemas it does not know', () => {
   const v2 = migrate(v1Fixture());
   assert.equal(migrate(v2), v2);
-  for (const broken of [null, undefined, 3, 'x', [], { version: 3, timers: [] }, { version: 1, timers: 'no' }]) {
+  for (const broken of [null, undefined, 3, 'x', [], { version: 4, timers: [] }, { version: 1, timers: 'no' }]) {
     assert.throws(() => migrate(broken));
   }
 });

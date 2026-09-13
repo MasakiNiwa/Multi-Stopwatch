@@ -25,7 +25,7 @@ test('independent timers remain independent', () => {
  assert.equal(elapsed(b, 10000), 7000);
 });
 test('reject corrupt, duplicate, future-schema and unbounded data', () => {
- for (const state of [null, {version:3,timers:[],groups:[]}, {...emptyState(),timers:[createTimer('a'),createTimer('a')]}, ...[NaN,Infinity,-1,MAX_MS+1].map(n=>({...emptyState(),timers:[{...createTimer('a'),elapsedMs:n}]}))]) assert.throws(()=>validate(state));
+ for (const state of [null, {version:4,timers:[],groups:[]}, {...emptyState(),timers:[createTimer('a'),createTimer('a')]}, ...[NaN,Infinity,-1,MAX_MS+1].map(n=>({...emptyState(),timers:[{...createTimer('a'),elapsedMs:n}]}))]) assert.throws(()=>validate(state));
  assert.throws(()=>load({ getItem:()=>'{broken' }));
 });
 test('storage write failures propagate rather than claim success', () => {
