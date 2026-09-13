@@ -1,12 +1,145 @@
 <!doctype html>
-<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#163b34"><meta name="description" content="学習や作業の積み重ねを残す、オフライン対応のマルチストップウォッチ。"><title>Multi Stopwatch</title><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icons/icon-192.png"><link rel="apple-touch-icon" href="./icons/icon-192.png"><link rel="stylesheet" href="./style.css"><script type="module" src="./src/app.js"></script></head>
-<body><main><header><p class="eyebrow">ひとつずつ、積み重ねる。</p><h1>Multi Stopwatch<span>作業も、勉強も。あなたのペースで。</span></h1></header>
-<p id="notice" role="status"></p><p id="offline" class="subtle" role="status">オフライン利用を準備しています…</p>
-<section class="summary" aria-label="計測の概要"><div><span>積み重ねた時間</span><strong id="total">00:00:00</strong><small>同時計測した時間も合算します</small></div><div><span>計測中</span><strong id="running">0</strong></div></section>
-<div class="toolbar"><button id="add" class="primary">＋ 計測を追加</button><button id="stop-all">すべて停止</button><button id="export">バックアップ</button><button id="install" hidden>インストール</button></div>
-<section id="timers" aria-label="ストップウォッチ"></section><p id="empty">最初の計測を追加して、今やることに名前をつけてみましょう。</p>
-<details class="help"><summary>保存・インストールについて</summary><p>操作するたびに、このブラウザに自動保存します。開始した計測は、画面を閉じていた時間も含めて復元します。</p><p>「オフラインで利用できます」と表示されたら、通信なしでも起動できます。対応ブラウザのメニューから「インストール」または「ホーム画面に追加」を選んでください。</p><p>端末の時計を変更すると計測に影響します。ブラウザのデータ削除で記録も消えるため、必要な記録はバックアップしてください。目標到達で自動停止や通知はしません。</p><label>バックアップから復元（現在の記録を置換） <input id="import" type="file" accept=".json,application/json"></label></details>
-<footer>小さな一歩も、ちゃんと残る。<span>v0.1 · 開発初期版</span></footer></main>
-<template id="card"><article class="card"><div class="card-head"><h2></h2><span class="state"></span></div><p class="memo"></p><p class="time"></p><p class="goal"></p><progress max="100" value="0"></progress><div class="actions"><button data-action="toggle" class="primary"></button><button data-action="reset">リセット</button><button data-action="edit">編集</button></div><details class="more"><summary>整理</summary><div class="actions"><button data-action="up">↑ 上へ</button><button data-action="down">↓ 下へ</button><button data-action="delete">削除</button></div></details></article></template>
-<dialog id="editor"><form id="edit-form"><h2>計測を編集</h2><label>名前<input name="name" maxlength="80" required></label><label>メモ<textarea name="memo" maxlength="1000" rows="3"></textarea></label><label>色<select name="color"><option value="mint">ミント</option><option value="blue">ブルー</option><option value="rose">ローズ</option><option value="amber">アンバー</option></select></label><label>目標（分・0は目標なし）<input name="target" type="number" min="0" max="5256000" step="1" required></label><label>経過時間を修正（秒・空欄なら変更しない）<input name="elapsed" type="number" min="0" max="315360000" step="1"></label><div class="actions"><button type="submit" class="primary">保存</button><button type="button" id="cancel">キャンセル</button></div></form></dialog>
-<noscript>計測にはJavaScriptを有効にしてください。</noscript></body></html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f7f2" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#111714" media="(prefers-color-scheme:dark)">
+<meta name="description" content="学習や作業の積み重ねを残す、オフライン対応のマルチストップウォッチ。">
+<title>Multi Stopwatch</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Stopwatch">
+<link rel="stylesheet" href="./style.css">
+<script type="module" src="./src/app.js"></script>
+</head>
+<body>
+<a class="skip" href="#timers">計測一覧へ移動</a>
+<main>
+  <header class="intro">
+    <p class="eyebrow">ひとつずつ、積み重ねる。</p>
+    <h1>Multi Stopwatch</h1>
+    <p class="tagline">作業も、勉強も。あなたのペースで。</p>
+  </header>
+
+  <div class="summary">
+    <div class="summary-total">
+      <span class="label">積み重ねた時間</span>
+      <strong id="total" class="time-total">00:00:00</strong>
+    </div>
+    <p id="running-note" class="summary-run" data-running="0">
+      <span class="dot" aria-hidden="true"></span><strong id="running">0</strong> 件を計測中
+    </p>
+  </div>
+
+  <div class="toolbar">
+    <button id="add" class="primary">＋ 計測を追加</button>
+    <button id="stop-all">すべて停止</button>
+    <button id="install" hidden>インストール</button>
+  </div>
+
+  <p id="notice" role="status"></p>
+
+  <ol id="timers" aria-label="ストップウォッチ"></ol>
+
+  <div id="empty" class="empty">
+    <p class="empty-lead">まだ計測がありません。</p>
+    <p>「＋ 計測を追加」で名前をつけると、その時間が積み重なっていきます。</p>
+    <p class="subtle">例：勉強、読書、開発、練習</p>
+  </div>
+
+  <details class="help">
+    <summary>データとインストールについて</summary>
+    <div class="help-body">
+      <p>操作するたびに、このブラウザへ自動保存します。計測中に画面を閉じても、閉じていた時間を含めて復元します。</p>
+      <p>フッターに「オフラインで利用できます」と表示されたら、通信なしでも起動できます。対応ブラウザのメニューから「インストール」または「ホーム画面に追加」を選んでください。</p>
+      <p>端末の時計を変更すると計測に影響します。ブラウザのデータ削除で記録も消えるため、大切な記録はバックアップしてください。目標に到達しても自動停止や通知はしません。</p>
+      <div class="help-actions">
+        <button id="export">バックアップを保存</button>
+        <label class="file-label">復元（現在の記録を置換）<input id="import" type="file" accept=".json,application/json"></label>
+      </div>
+    </div>
+  </details>
+
+  <footer>
+    <span>小さな一歩も、ちゃんと残る。</span>
+    <span id="offline" class="subtle" role="status">オフライン利用を準備しています…</span>
+    <span class="subtle">v0.2 · 開発初期版</span>
+  </footer>
+</main>
+
+<template id="card">
+  <li class="card">
+    <div class="card-head">
+      <h2></h2>
+      <div class="order">
+        <button data-action="up" class="icon" title="上へ移動">↑</button>
+        <button data-action="down" class="icon" title="下へ移動">↓</button>
+      </div>
+    </div>
+    <p class="state"><span class="dot" aria-hidden="true"></span><span class="state-text"></span></p>
+    <p class="time"><span class="digits" aria-hidden="true"><span class="h">00</span><u>h</u><span class="m">00</span><u>m</u><span class="sec">00</span><u>s</u></span><span class="sr-only"></span></p>
+    <div class="bar" aria-hidden="true"><span></span></div>
+    <p class="goal"></p>
+    <p class="memo"></p>
+    <div class="actions">
+      <button data-action="toggle" class="primary toggle"></button>
+    </div>
+    <div class="actions sub">
+      <button data-action="edit">編集</button>
+      <button data-action="reset">リセット</button>
+      <button data-action="delete" class="quiet-danger">削除</button>
+    </div>
+  </li>
+</template>
+
+<dialog id="editor" aria-labelledby="editor-title">
+  <form id="edit-form">
+    <h2 id="editor-title">計測を編集</h2>
+    <label class="field">名前
+      <input name="name" maxlength="80" required autocomplete="off" placeholder="例：勉強">
+    </label>
+    <fieldset class="field colors">
+      <legend>色</legend>
+      <label class="swatch" data-color="mint"><input type="radio" name="color" value="mint"><span>ミント</span></label>
+      <label class="swatch" data-color="blue"><input type="radio" name="color" value="blue"><span>ブルー</span></label>
+      <label class="swatch" data-color="rose"><input type="radio" name="color" value="rose"><span>ローズ</span></label>
+      <label class="swatch" data-color="amber"><input type="radio" name="color" value="amber"><span>アンバー</span></label>
+    </fieldset>
+    <label class="field">メモ
+      <textarea name="memo" maxlength="1000" rows="2" placeholder="任意"></textarea>
+    </label>
+    <fieldset class="field split">
+      <legend>目標<span class="hint">0のままなら目標なし</span></legend>
+      <label>時間<input name="targetH" type="number" min="0" max="87600" step="1" inputmode="numeric" value="0"></label>
+      <label>分<input name="targetM" type="number" min="0" max="59" step="1" inputmode="numeric" value="0"></label>
+    </fieldset>
+    <fieldset class="field split" id="elapsed-fields">
+      <legend>経過時間の修正<span class="hint">変更した場合だけ反映します</span></legend>
+      <label>時間<input name="elapsedH" type="number" min="0" max="87600" step="1" inputmode="numeric" value="0"></label>
+      <label>分<input name="elapsedM" type="number" min="0" max="59" step="1" inputmode="numeric" value="0"></label>
+      <label>秒<input name="elapsedS" type="number" min="0" max="59" step="1" inputmode="numeric" value="0"></label>
+    </fieldset>
+    <p id="edit-error" class="form-error" role="alert"></p>
+    <div class="actions dialog-actions">
+      <button type="submit" class="primary">保存</button>
+      <button type="button" id="cancel">キャンセル</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="confirm" aria-labelledby="confirm-title">
+  <h2 id="confirm-title"></h2>
+  <p id="confirm-text"></p>
+  <div class="actions dialog-actions">
+    <button type="button" id="confirm-ok" class="danger"></button>
+    <button type="button" id="confirm-cancel">キャンセル</button>
+  </div>
+</dialog>
+
+<noscript><p class="noscript">計測にはJavaScriptを有効にしてください。</p></noscript>
+</body>
+</html>

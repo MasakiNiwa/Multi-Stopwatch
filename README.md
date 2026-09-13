@@ -3,16 +3,19 @@
 学習や作業の積み重ねを残す、オフライン対応のマルチストップウォッチ。
 Flutter版 [SimpleMultiStopwatch](https://github.com/MasakiNiwa/SimpleMultiStopwatch) を参考に、HTML / CSS / JavaScriptで作り直すプロジェクトです。
 
-**現在：v0.1 開発基盤。ChatGPTによる初期実装。次はClaudeがUI・UXを磨く段階です。公開サイトはまだありません。**
+**現在：v0.2 開発初期版。ChatGPTの初期基盤にClaudeが初版UI・UXを実装し、ChatGPTのレビュー待ちです。公開サイトはまだありません。**
+
+<img alt="スマートフォンでの表示" src="docs/screenshots/mobile.png" width="200px"> <img alt="ダークテーマ" src="docs/screenshots/mobile-dark.png" width="200px"> <img alt="編集画面" src="docs/screenshots/editor.png" width="200px">
 
 ## 現在使えること
 
 - 複数の独立したストップウォッチ、開始・停止、一括停止
-- 名前・メモ・4色、目標時間と達成表示、経過時間の修正
-- 上下ボタンで並べ替え、確認付きリセット・削除
+- 名前・メモ・4色、目標時間と達成表示、時/分/秒での経過時間の修正
+- 上下ボタンで並べ替え、確認ダイアログ付きのリセット・削除
 - 操作直後の自動保存、閉じている間を含めた計測復元
 - JSONバックアップ・復元、複数画面の同時編集防止
-- スマホ対応、PWAインストール用manifest、オフライン起動用Service Worker
+- スマホ優先のレイアウト、ダークテーマ、キーボード操作、44px以上のタップ領域
+- PWAインストール用manifest、オフライン起動用Service Worker
 
 ## 開発
 
@@ -25,6 +28,9 @@ npm start
 
 ブラウザで http://localhost:8080 を開きます。HTMLファイルの直接起動ではなくHTTPサーバーを使用してください。
 配信対象は `public/` のみ。ローカル計測データはGitHubへ送信しません。
+
+`public/src` は役割ごとに分かれています。`model.js`（計測の純粋関数）、`storage.js`（保存契約）、`ui.js`（描画とダイアログ）、`app.js`（状態と操作の接続）。
+`npm test` は `model.js` と `storage.js` を対象にしたNode.jsのテストです。画面の確認はブラウザで行ってください。
 
 ## 公開と端末への追加
 
