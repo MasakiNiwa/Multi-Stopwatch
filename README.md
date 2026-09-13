@@ -3,9 +3,8 @@
 学習や作業の積み重ねを残す、オフライン対応のマルチストップウォッチ。
 Flutter版 [SimpleMultiStopwatch](https://github.com/MasakiNiwa/SimpleMultiStopwatch) を参考に、HTML / CSS / JavaScriptで作り直すプロジェクトです。
 
-**現在：v0.2 開発初期版。ChatGPTの初期基盤にClaudeが初版UI・UXを実装し、ChatGPTのレビュー待ちです。公開サイトはまだありません。**
+**現在：v0.3 公開前プレビュー。Claudeの初版をChatGPTが技術レビューし、現代的なビジュアルへ再設計しています。公開サイトはまだありません。**
 
-<img alt="スマートフォンでの表示" src="docs/screenshots/mobile.png" width="200px"> <img alt="ダークテーマ" src="docs/screenshots/mobile-dark.png" width="200px"> <img alt="編集画面" src="docs/screenshots/editor.png" width="200px">
 
 ## 現在使えること
 
@@ -24,6 +23,7 @@ Node.js 24以降、Python 3。npmの依存インストールやビルドは不�
 ```sh
 npm test
 npm start
+npm run test:browser # Playwrightとブラウザ導入後
 ```
 
 ブラウザで http://localhost:8080 を開きます。HTMLファイルの直接起動ではなくHTTPサーバーを使用してください。

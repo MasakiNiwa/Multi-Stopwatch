@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#f6f7f2" media="(prefers-color-scheme:light)">
-<meta name="theme-color" content="#111714" media="(prefers-color-scheme:dark)">
+<meta name="theme-color" content="#f3f5f9" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#0b0e14" media="(prefers-color-scheme:dark)">
 <meta name="description" content="学習や作業の積み重ねを残す、オフライン対応のマルチストップウォッチ。">
 <title>Multi Stopwatch</title>
 <link rel="manifest" href="./manifest.webmanifest">
@@ -20,25 +20,28 @@
 <a class="skip" href="#timers">計測一覧へ移動</a>
 <main>
   <header class="intro">
-    <p class="eyebrow">ひとつずつ、積み重ねる。</p>
-    <h1>Multi Stopwatch</h1>
-    <p class="tagline">作業も、勉強も。あなたのペースで。</p>
+    <div class="brand-mark" aria-hidden="true"><span></span></div>
+    <div>
+      <p class="eyebrow">FOCUS, YOUR WAY</p>
+      <h1>Multi Stopwatch</h1>
+      <p class="tagline">いくつもの挑戦を、ひとつずつ積み重ねる。</p>
+    </div>
   </header>
 
   <div class="summary">
     <div class="summary-total">
-      <span class="label">積み重ねた時間</span>
+      <span class="label">TOTAL FOCUS</span>
       <strong id="total" class="time-total">00:00:00</strong>
     </div>
     <p id="running-note" class="summary-run" data-running="0">
-      <span class="dot" aria-hidden="true"></span><strong id="running">0</strong> 件を計測中
+      <span class="live-dot" aria-hidden="true"></span><strong id="running">0</strong> 件を計測中
     </p>
   </div>
 
   <div class="toolbar">
-    <button id="add" class="primary">＋ 計測を追加</button>
-    <button id="stop-all">すべて停止</button>
-    <button id="install" hidden>インストール</button>
+    <button id="add" class="primary"><span aria-hidden="true">＋</span> 新しい計測</button>
+    <button id="stop-all"><span aria-hidden="true">■</span> すべて停止</button>
+    <button id="install" hidden>アプリをインストール</button>
   </div>
 
   <p id="notice" role="status"></p>
@@ -46,8 +49,9 @@
   <ol id="timers" aria-label="ストップウォッチ"></ol>
 
   <div id="empty" class="empty">
-    <p class="empty-lead">まだ計測がありません。</p>
-    <p>「＋ 計測を追加」で名前をつけると、その時間が積み重なっていきます。</p>
+    <span class="empty-icon" aria-hidden="true"></span>
+    <p class="empty-lead">最初の一歩を記録しよう</p>
+    <p>「新しい計測」で名前をつけると、その時間がここに積み重なります。</p>
     <p class="subtle">例：勉強、読書、開発、練習</p>
   </div>
 
@@ -67,7 +71,7 @@
   <footer>
     <span>小さな一歩も、ちゃんと残る。</span>
     <span id="offline" class="subtle" role="status">オフライン利用を準備しています…</span>
-    <span class="subtle">v0.2 · 開発初期版</span>
+    <span class="subtle">v0.3 · Preview</span>
   </footer>
 </main>
 
