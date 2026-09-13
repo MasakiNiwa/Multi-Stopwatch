@@ -80,7 +80,6 @@
   <div class="columns">
     <section id="panel-timers" aria-labelledby="tab-timers">
       <div class="tools">
-        <div class="tools-row"><button type="button" id="add-set">＋ セット</button><button type="button" id="delete-mode" aria-pressed="false">削除モード</button></div>
         <input id="filter" type="search" placeholder="名前やメモで絞り込む" autocomplete="off" aria-label="計測を名前やメモで絞り込む" hidden>
         <p id="filter-count" class="filter-count" role="status"></p>
         <div class="tools-row">
@@ -88,6 +87,8 @@
           <select id="sort"></select>
           <button type="button" id="apply-sort">並べ替える</button>
           <button type="button" id="manage-groups">グループ</button>
+          <button type="button" id="add-set">＋ セット</button>
+          <button type="button" id="delete-mode" aria-pressed="false">削除モード</button>
         </div>
       </div>
 
@@ -110,21 +111,21 @@
       </div>
       <p id="stat-empty" class="stat-empty">計測を追加すると、ここに累計が集まります。</p>
       <section class="stat-block" id="stat-group-block">
-        <h3>グループ別</h3>
+        <h3>グループ別<span class="stat-hint">計測の分類</span></h3>
         <ul id="stat-groups" class="stat-list"></ul>
       </section>
+      <section class="stat-block" id="stat-set-block" hidden><h3>セット別小計<span class="stat-hint">親子の内訳</span></h3><ul id="stat-sets" class="stat-list"></ul></section>
       <section class="stat-block" id="stat-rank-block">
         <h3>累計時間ランキング</h3>
         <ol id="stat-ranking" class="stat-list"></ol>
       </section>
-      <section class="stat-block" id="stat-set-block" hidden><h3>セット別小計</h3><ul id="stat-sets" class="stat-list"></ul></section>
     </aside>
   </div>
 
   <footer>
     <span>小さな一歩も、ちゃんと残る。</span>
     <span id="offline" class="subtle" role="status">オフライン利用を準備しています…</span>
-    <span class="subtle">v0.7</span>
+    <span class="subtle">v0.8</span>
   </footer>
 </main>
 
@@ -137,19 +138,19 @@
       <button data-action="open" class="open" type="button">
         <span class="name"></span>
         <span class="time">
-          <span class="digits" aria-hidden="true"><span class="h">00</span><u>h</u><span class="m">00</span><u>m</u><span class="sec">00</span><u>s</u></span>
+          <span class="digits" aria-hidden="true"><u class="sum" hidden>計</u><span class="h">00</span><u>h</u><span class="m">00</span><u>m</u><span class="sec">00</span><u>s</u></span>
           <span class="sr-only"></span>
         </span>
         <span class="meta">
+          <span class="meta-kind" hidden>セット</span>
           <span class="state"><span class="dot" aria-hidden="true"></span><span class="state-text"></span></span>
           <span class="meta-group"></span>
           <span class="meta-note"></span>
         </span>
       </button>
-      <button data-action="expand" class="expand" type="button" hidden></button>
     </div>
     <div class="bar" aria-hidden="true"><span></span></div>
-    <div class="set-actions" hidden><button data-action="add-child" type="button">＋ 子を追加</button><button data-action="details" type="button">セットの編集・操作</button></div>
+    <div class="set-actions" hidden><button data-action="add-child" type="button">＋ 子を追加</button><button data-action="details" type="button">編集・削除</button></div>
   </li>
 </template>
 
@@ -187,8 +188,8 @@
     </section>
     <section>
       <h3>セットと削除</h3>
-      <p>「＋ セット」で子ストップウォッチをまとめられます。親の名前か矢印で展開し、子を追加してください。同じセット内で子を開始すると、前の子は停止します。親の丸いボタンは前回の子を再開します。親の時間は子の合計です。</p>
-      <p>「削除モード」をオンにすると、一覧から直接削除できます。直後は「元に戻す」で取り消せます。次の記録変更・再読み込み後は取り消せません。セットの削除では子を残し、単独の計測へ戻します。</p>
+      <p>「＋ セット」で子ストップウォッチをまとめられます。セットの行（名前の先頭に ⌄）を押すと子の表示と折りたたみが切り替わり、中の「＋ 子を追加」で内訳を作れます。同じセット内で子を開始すると、前の子は停止します。親の丸いボタンは前回の子を再開します。時間の前の「計」は子の合計という意味です。子を単独に戻すときは、子の詳細画面の「セットから出す」を押します。</p>
+      <p>「削除モード」をオンにすると、一覧から直接削除できます。続けて削除するときは、そのまま次の行を押せます。直後は「元に戻す」で取り消せます。次の記録変更・再読み込み後は取り消せません。セットの削除では子を残し、単独の計測へ戻します。</p>
     </section>
     <section>
       <h3>インストールとオフライン</h3>
@@ -238,6 +239,7 @@
     <button type="button" id="sheet-toggle" class="primary"></button>
     <button type="button" data-sheet="edit">編集</button>
     <button type="button" data-sheet="reset">リセット</button>
+    <button type="button" data-sheet="unparent" hidden>セットから出す</button>
     <button type="button" data-sheet="up">↑ 上へ移動</button>
     <button type="button" data-sheet="down">↓ 下へ移動</button>
     <button type="button" data-sheet="delete" class="quiet-danger">削除</button>

@@ -84,13 +84,17 @@ main { width: min(760px, 100%); margin: auto; padding: 24px max(16px, env(safe-a
 /* Header */
 .undo-delete { position: fixed; z-index: 15; bottom: calc(94px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: min(620px, calc(100% - 24px)); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; background: var(--secondary-container); color: var(--on-secondary-container); border: 1px solid var(--outline-variant); border-radius: var(--r-m); box-shadow: var(--shadow-dialog); }
 .undo-delete span { flex: 1 1 140px; font-size: 13px; overflow-wrap: anywhere; }
-.card[data-child="true"] { margin-left: 12px; border-left: 2px solid var(--outline-variant); }
-.expand { flex: none; width: 44px; min-width: 44px; padding: 0; background: transparent; }
+/* Children sit under their set, tied to it by an indent and a rule in the set's own colour. */
+.card[data-child="true"] { margin-left: 14px; border-left: 3px solid color-mix(in srgb, var(--color) 55%, var(--outline-variant)); border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
 .row-delete { flex: none; min-width: 44px; padding: 0 4px; }
-.set-actions { display: flex; gap: 6px; padding: 4px 8px 8px; flex-wrap: wrap; }
-.set-actions button { font-size: 12px; }
-.card[data-kind="set"] > .row .name::before { content: "セット · "; color: var(--on-surface-variant); font-size: 11px; }
+.set-actions { display: flex; gap: 6px; padding: 0 10px 8px 52px; flex-wrap: wrap; }
+.set-actions button { min-height: 40px; padding: 8px 12px; font-size: 12px; font-weight: 500; }
+/* The disclosure marker rides inside the name line: a set keeps a timer's control count. */
+.card[data-kind="set"] > .row .name::before { content: "⌄"; display: inline-block; width: .9em; margin-right: 3px; color: var(--on-surface-variant); font-weight: 700; }
+.card[data-kind="set"][data-expanded="true"] > .row .name::before { content: "⌃"; }
 .card[data-kind="set"] .meta-note { min-width: 0; }
+.meta-kind { flex: none; padding: 1px 8px; border-radius: var(--r-full); color: var(--on-secondary-container); background: var(--secondary-container); font-weight: 600; }
+.time .sum { margin: 0 .2em 0 0; }
 .tools > .tools-row:first-child { justify-content: space-between; margin-bottom: 6px; }
 #delete-mode[aria-pressed="true"] { background: var(--error-container); color: var(--on-error-container); }
 .intro { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
@@ -191,12 +195,7 @@ body[data-layout="split"] .columns { grid-template-columns: minmax(0,1fr) minmax
 .card[data-length="long"] .time .digits { font-size: 17px; }
 .time u { margin: 0 .14em 0 .03em; color: var(--on-surface-variant); font-size: .55em; font-style: normal; font-weight: 600; text-decoration: none; letter-spacing: 0; }
 .time .sec { color: var(--on-surface-variant); }
-/* A set has one extra control. Give its name a full line instead of squeezing it to an ellipsis. */
-.card[data-kind="set"] .open { grid-template-columns: minmax(0,1fr); }
-.card[data-kind="set"] .name { grid-column: 1; grid-row: 1; }
-.card[data-kind="set"] .time { grid-column: 1; grid-row: 2; }
-.card[data-kind="set"] .time .digits { font-size: 18px; }
-.card[data-kind="set"] .meta { grid-row: 3; }
+.card[data-kind="set"] .time .digits { font-size: 19px; }
 .bar { height: 3px; overflow: hidden; background: var(--surface-container-highest); }
 .bar span { display: block; width: 0; height: 100%; background: var(--color); transition: width .3s ease; }
 
@@ -215,6 +214,9 @@ body[data-layout="split"] #panel-stats { position: sticky; top: 12px; max-height
 .stat-label { display: block; margin-bottom: 2px; color: var(--on-surface-variant); font-size: 11px; font-weight: 600; letter-spacing: .12em; }
 .stat-total { font-size: 26px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .stat-count { font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.stat-item[data-child="true"] { margin-left: 14px; padding-left: 8px; border-left: 2px solid var(--outline-variant); }
+.stat-item[data-child="true"] .stat-name { font-weight: 500; }
+.stat-hint { margin-left: 8px; color: var(--outline); font-size: 11px; font-weight: 400; }
 .stat-block h3 { margin: 16px 0 8px; font-size: 12px; font-weight: 600; color: var(--on-surface-variant); letter-spacing: .04em; }
 .stat-list { list-style: none; display: grid; gap: 10px; margin: 0; padding: 0; }
 /* Explicit placement: the rank column collapses on group rows, the other cells must not reflow. */

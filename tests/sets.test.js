@@ -34,7 +34,14 @@ test('parent stops active child then resumes last; empty or unused parent does n
   assert.equal(by(s, 'a').startedAt, null);
   s = validate(toggleItem(s, 'p', 4000));
   assert.equal(elapsed(by(s, 'a'), 5000), 2000);
-  assert.equal(viewItem(s, by(s, 'p'), 5000).childNote, '計測中: 演習');
+  // The set row hides its own state chip, so the note has to say the state in words.
+  assert.equal(viewItem(s, by(s, 'p'), 5000).childNote, '計測中 演習');
+  assert.equal(viewItem(s, by(s, 'p'), 5000).childCount, 2);
+  const stopped = toggleItem(s, 'a', 6000); // stop the running child, leaving it as the last used
+  assert.equal(viewItem(stopped, by(stopped, 'p'), 7000).childNote, '前回 演習');
+  const lonely = { ...s, timers: s.timers.filter(t => t.parentId !== 'p').map(t => t.id === 'p' ? { ...t, lastChildId: null } : t) };
+  assert.equal(viewItem(lonely, by(lonely, 'p'), 7000).childNote, '子がありません');
+  assert.equal(viewItem(lonely, by(lonely, 'p'), 7000).childCount, 0);
 });
 test('aggregate is derived, unclamped to one timer limit, excluded from totals and rank', () => {
   let s = fixture(); s.timers = s.timers.map(t => ['a','b'].includes(t.id) ? { ...t, elapsedMs: MAX_MS } : t);
