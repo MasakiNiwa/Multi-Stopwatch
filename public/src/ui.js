@@ -1,71 +1,95 @@
 // DOM rendering and dialogs. Holds no application state: every function is told what to show.
-import { elapsed, format, parts, progress, speak, running, total, MAX_MS } from './model.js';
+import { elapsed, format, parts, progress, shortDuration, speak, running, total, MAX_MS } from './model.js';
 
 const $ = selector => document.querySelector(selector);
-const cards = () => $('#timers').children;
-// Action buttons show a short label; assistive technology also hears which timer it belongs to.
-const LABELS = [['up', '上へ移動'], ['down', '下へ移動'], ['edit', '編集'], ['reset', 'リセット'], ['delete', '削除']];
+const rows = () => $('#timers').children;
 
 function text(node, value) {
   if (node.textContent !== value) node.textContent = value;
 }
 
-// Rebuild only what changed. Cards keep their identity so focus and scrolling survive an update.
-export function sync(timers, editable) {
+// Rebuild only what changed. Rows keep their identity so focus, scrolling and a drag survive an update.
+export function sync(timers, { editable, reorderable }) {
   const list = $('#timers');
-  const existing = new Map([...cards()].map(card => [card.dataset.id, card]));
+  // Moving a node in the DOM drops focus. Remember it so repeated key presses keep working.
+  const focused = list.contains(document.activeElement) ? document.activeElement : null;
+  const existing = new Map([...rows()].map(row => [row.dataset.id, row]));
   const ordered = timers.map(t => {
-    const card = existing.get(t.id) ?? $('#card').content.firstElementChild.cloneNode(true);
+    const row = existing.get(t.id) ?? $('#card').content.firstElementChild.cloneNode(true);
     existing.delete(t.id);
-    card.dataset.id = t.id;
-    card.dataset.color = t.color;
-    text(card.querySelector('h2'), t.name);
-    card.querySelector('h2').title = t.name; // Long names are clamped to three lines in the card.
-    text(card.querySelector('.memo'), t.memo);
-    return card;
+    row.dataset.id = t.id;
+    row.dataset.color = t.color;
+    const name = row.querySelector('.name');
+    text(name, t.name);
+    name.title = t.name; // The row shows one line; the full name stays reachable on hover.
+    row.querySelector('[data-action="open"]').setAttribute('aria-label', `${t.name}の詳細と操作`);
+    const grip = row.querySelector('[data-action="grip"]');
+    grip.setAttribute('aria-label', `${t.name}を並べ替え。上下キーで移動できます`);
+    grip.disabled = !editable || !reorderable;
+    grip.title = reorderable ? 'ドラッグ、または上下キーで並べ替え' : '絞り込み中は並べ替えできません';
+    row.querySelector('[data-action="toggle"]').disabled = !editable;
+    return row;
   });
-  for (const card of existing.values()) card.remove();
-  ordered.forEach((card, index) => {
-    if (list.children[index] !== card) list.insertBefore(card, list.children[index] ?? null);
-    card.querySelectorAll('button').forEach(b => { b.disabled = !editable; });
-    card.querySelector('[data-action="up"]').disabled = !editable || index === 0;
-    card.querySelector('[data-action="down"]').disabled = !editable || index === timers.length - 1;
-    for (const [action, label] of LABELS) card.querySelector(`[data-action="${action}"]`).setAttribute('aria-label', `${timers[index].name}を${label}`);
+  for (const row of existing.values()) row.remove();
+  ordered.forEach((row, index) => {
+    if (list.children[index] !== row) list.insertBefore(row, list.children[index] ?? null);
   });
-  $('#empty').hidden = timers.length > 0;
+  if (focused?.isConnected && document.activeElement !== focused) focused.focus();
 }
 
 // Called on every tick: only time-dependent parts of the view.
-export function paint(timers, now, editable = true) {
-  [...cards()].forEach((card, index) => {
-    const t = timers[index];
+// `shown` are the rows on screen; the summary always counts every timer, filtered out or not.
+export function paint(shown, all, now) {
+  [...rows()].forEach((row, index) => {
+    const t = shown[index];
     if (!t) return;
     const ms = elapsed(t, now), isRunning = t.startedAt !== null, { h, m, s } = parts(ms);
-    card.dataset.state = isRunning ? 'running' : 'stopped';
-    card.dataset.length = h.length > 4 ? 'long' : 'normal';
-    text(card.querySelector('.h'), h);
-    text(card.querySelector('.m'), m);
-    text(card.querySelector('.sec'), s);
-    text(card.querySelector('.time .sr-only'), speak(ms));
-    text(card.querySelector('.state-text'), isRunning ? '計測中' : '停止中');
-    const toggle = card.querySelector('[data-action="toggle"]');
-    text(toggle, isRunning ? '■ 停止' : '▶ 開始');
+    row.dataset.state = isRunning ? 'running' : 'stopped';
+    row.dataset.length = h.length > 4 ? 'long' : 'normal';
+    text(row.querySelector('.h'), h);
+    text(row.querySelector('.m'), m);
+    text(row.querySelector('.sec'), s);
+    text(row.querySelector('.time .sr-only'), speak(ms));
+    text(row.querySelector('.state-text'), isRunning ? '計測中' : '停止中');
+    const toggle = row.querySelector('[data-action="toggle"]');
+    text(toggle.querySelector('.glyph'), isRunning ? '■' : '▶');
     toggle.setAttribute('aria-label', `${t.name}を${isRunning ? '停止' : '開始'}`);
-    // Resetting a timer that already reads zero would do nothing; keep the button out of the way.
-    card.querySelector('[data-action="reset"]').disabled = !editable || ms === 0;
-    const goal = card.querySelector('.goal'), bar = card.querySelector('.bar');
-    bar.hidden = goal.hidden = t.targetMs === 0;
-    if (t.targetMs > 0) {
-      const ratio = progress(ms, t.targetMs), done = ms >= t.targetMs;
-      bar.firstElementChild.style.width = `${ratio * 100}%`;
-      goal.classList.toggle('done', done);
-      text(goal, done ? `目標 ${format(t.targetMs)} を達成 ✓` : `目標 ${format(t.targetMs)}・${Math.floor(ratio * 100)}%`);
-    }
+    const bar = row.querySelector('.bar');
+    bar.hidden = t.targetMs === 0;
+    if (t.targetMs > 0) bar.firstElementChild.style.width = `${progress(ms, t.targetMs) * 100}%`;
+    text(row.querySelector('.meta-note'), noteFor(t, ms));
   });
-  const count = running(timers);
-  text($('#total'), format(total(timers, now)));
+  const count = running(all);
+  text($('#total'), format(total(all, now)));
   text($('#running'), String(count));
   $('#running-note').dataset.running = count > 0 ? '1' : '0';
+}
+
+// One secondary line per row: the goal when there is one, otherwise the memo.
+// The goal uses a short duration because a row has little room beside the running time.
+function noteFor(timer, ms) {
+  if (timer.targetMs > 0) {
+    return ms >= timer.targetMs ? '目標達成 ✓' : `目標まで ${100 - Math.floor(progress(ms, timer.targetMs) * 100)}%`;
+  }
+  return timer.memo.replace(/\s+/g, ' ').trim();
+}
+// The sheet has room for the exact goal.
+function sheetGoal(timer, ms) {
+  const percent = Math.floor(progress(ms, timer.targetMs) * 100);
+  return ms >= timer.targetMs
+    ? `目標 ${shortDuration(timer.targetMs)}（${format(timer.targetMs)}）を達成 ✓`
+    : `目標 ${shortDuration(timer.targetMs)}（${format(timer.targetMs)}）・${percent}%`;
+}
+
+export function setListState({ hasTimers, shown, count, filtering }) {
+  $('#empty').hidden = hasTimers;
+  $('#filter-bar').hidden = count < 6;
+  $('#no-match').hidden = !(hasTimers && shown === 0);
+  text($('#filter-count'), filtering ? `${count}件中 ${shown}件を表示` : '');
+}
+
+export function announce(message) {
+  text($('#live'), message);
 }
 
 let noticeTimer;
@@ -90,6 +114,28 @@ export function ask({ title, message, confirmLabel }) {
     $('#confirm-cancel').focus();
   });
 }
+
+// Detail sheet: everything a row cannot show, plus the low frequency actions.
+export function openSheet() {
+  $('#sheet').showModal();
+  $('#sheet-toggle').focus();
+}
+export function paintSheet(timer, now, { index, count, editable }) {
+  if (!$('#sheet').open || !timer) return;
+  const ms = elapsed(timer, now), isRunning = timer.startedAt !== null;
+  text($('#sheet-title'), timer.name);
+  text($('#sheet-time'), format(ms));
+  text($('#sheet-toggle'), isRunning ? '■ 停止' : '▶ 開始');
+  text($('#sheet-goal'), timer.targetMs > 0 ? sheetGoal(timer, ms) : '');
+  text($('#sheet-memo'), timer.memo);
+  $('#sheet-toggle').disabled = !editable;
+  for (const action of ['edit', 'delete']) $(`[data-sheet="${action}"]`).disabled = !editable;
+  $('[data-sheet="reset"]').disabled = !editable || ms === 0;
+  $('[data-sheet="up"]').disabled = !editable || index <= 0;
+  $('[data-sheet="down"]').disabled = !editable || index === count - 1;
+}
+export function closeSheet() { $('#sheet').close(); }
+export function sheetOpen() { return $('#sheet').open; }
 
 export function openEditor(timer, isNew) {
   const form = $('#edit-form'), f = form.elements;
@@ -132,6 +178,10 @@ export function readEditor() {
 
 export function closeEditor() { $('#editor').close(); }
 export function editorOpen() { return $('#editor').open; }
-export function focusCard(id) {
-  requestAnimationFrame(() => document.querySelector(`.card[data-id="${id}"] [data-action="toggle"]`)?.focus());
+export function focusRow(id, action = 'toggle') {
+  requestAnimationFrame(() => document.querySelector(`.card[data-id="${id}"] [data-action="${action}"]`)?.focus());
+}
+export function showTheme(mode) {
+  const input = document.querySelector(`#theme input[value="${mode}"]`);
+  if (input) input.checked = true;
 }

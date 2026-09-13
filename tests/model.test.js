@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTimer, start, stop, reset, setElapsed, elapsed, format, parts, speak, progress, total, running, validate, MAX_MS } from '../public/src/model.js';
-import { load, save } from '../public/src/storage.js';
+import { createTimer, start, stop, reset, setElapsed, elapsed, format, parts, speak, progress, shortDuration, move, matches, total, running, validate, MAX_MS } from '../public/src/model.js';
+import { load, save, loadPrefs, savePrefs, validatePrefs, DEFAULT_PREFS, PREFS_KEY } from '../public/src/storage.js';
 test('pause/resume accumulates only running intervals and repeated start is idempotent', () => {
  let t = start(createTimer('a'), 1000); t = start(t, 1500);
  t = stop(t, 6000); assert.equal(elapsed(t, 12000), 5000);
@@ -57,4 +57,48 @@ test('summary adds every timer including the running part', () => {
  assert.equal(progress(1000, 4000), 0.25);
  assert.equal(progress(9000, 4000), 1);
  assert.equal(progress(9000, 0), 0);
+});
+test('move reorders without losing or duplicating a timer', () => {
+ const timers = ['a','b','c','d'].map(id => createTimer(id, id));
+ assert.deepEqual(move(timers, 2, 0).map(t => t.id), ['c','a','b','d']);
+ assert.deepEqual(move(timers, 0, 3).map(t => t.id), ['b','c','d','a']);
+ assert.deepEqual(move(timers, 1, 1).map(t => t.id), ['a','b','c','d']);
+ for (const [from, to] of [[-1,0],[0,-1],[0,4],[4,0]]) assert.equal(move(timers, from, to), timers);
+ assert.deepEqual(timers.map(t => t.id), ['a','b','c','d']);
+});
+test('filtering matches name and memo regardless of case or width', () => {
+ const timer = { ...createTimer('a', '英語のリスニング'), memo: 'Podcast ＆ Radio' };
+ for (const q of ['', '  ', '英語', 'リスニング', 'podcast', 'PODCAST', 'ＰＯＤＣＡＳＴ', 'radio']) assert.equal(matches(timer, q), true, q);
+ for (const q of ['数学', 'video']) assert.equal(matches(timer, q), false, q);
+});
+test('short duration keeps a goal label readable in a narrow row', () => {
+ assert.equal(shortDuration(0), '0分');
+ assert.equal(shortDuration(45 * 60000), '45分');
+ assert.equal(shortDuration(3600000), '1時間');
+ assert.equal(shortDuration(5400000), '1時間30分');
+ assert.equal(shortDuration(20 * 3600000), '20時間');
+});
+test('theme preference round trips and never blocks the app', () => {
+ let raw = null;
+ const storage = { getItem: () => raw, setItem: (_, value) => { raw = value; } };
+ assert.deepEqual(loadPrefs(storage), DEFAULT_PREFS);
+ savePrefs(storage, { version: 1, theme: 'dark' });
+ assert.deepEqual(loadPrefs(storage), { version: 1, theme: 'dark' });
+ assert.equal(PREFS_KEY.includes('prefs'), true);
+ for (const broken of ['{oops', '{"version":2,"theme":"dark"}', '{"version":1,"theme":"neon"}', 'null']) {
+  raw = broken;
+  assert.deepEqual(loadPrefs(storage), DEFAULT_PREFS, broken);
+ }
+ for (const bad of [null, { version: 2, theme: 'dark' }, { version: 1, theme: 'neon' }]) assert.throws(() => validatePrefs(bad));
+ assert.throws(() => savePrefs({ setItem() { throw Error('quota'); } }, { version: 1, theme: 'dark' }));
+});
+test('preferences and stopwatch records use separate keys', async () => {
+ const { KEY } = await import('../public/src/storage.js');
+ assert.notEqual(KEY, PREFS_KEY);
+ const store = new Map();
+ const storage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+ save(storage, { version: 1, timers: [createTimer('a')] });
+ savePrefs(storage, { version: 1, theme: 'light' });
+ assert.equal(load(storage).timers.length, 1);
+ assert.equal(loadPrefs(storage).theme, 'light');
 });

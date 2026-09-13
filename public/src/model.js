@@ -48,8 +48,27 @@ export function speak(ms) {
   const { h, m, s } = parts(ms);
   return `${Number(h)}時間${Number(m)}分${Number(s)}秒`;
 }
+// Short spoken-style duration for tight places such as a row's goal label.
+export function shortDuration(ms) {
+  const minutes = Math.floor(ms / 60000), h = Math.floor(minutes / 60), m = minutes % 60;
+  if (h === 0) return `${m}分`;
+  return m === 0 ? `${h}時間` : `${h}時間${m}分`;
+}
 export function progress(ms, targetMs) {
   return targetMs > 0 ? Math.min(1, ms / targetMs) : 0;
+}
+// Reordering as data: the same function serves the drag handle, the arrow keys and the menu.
+export function move(timers, from, to) {
+  if (from === to || from < 0 || to < 0 || from >= timers.length || to >= timers.length) return timers;
+  const next = [...timers];
+  next.splice(to, 0, next.splice(from, 1)[0]);
+  return next;
+}
+// Filter for finding one timer among many. Case and width differences should not hide a match.
+export function matches(timer, query) {
+  const norm = value => value.normalize('NFKC').toLowerCase();
+  const q = norm(query).trim();
+  return q === '' || norm(timer.name).includes(q) || norm(timer.memo).includes(q);
 }
 export function validate(state) {
   const bounded = n => Number.isSafeInteger(n) && n >= 0 && n <= MAX_MS;
