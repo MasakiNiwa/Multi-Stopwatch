@@ -3,20 +3,27 @@
 学習や作業の積み重ねを残す、オフライン対応のマルチストップウォッチ。
 Flutter版 [SimpleMultiStopwatch](https://github.com/MasakiNiwa/SimpleMultiStopwatch) を参考に、HTML / CSS / JavaScriptで作り直すプロジェクトです。
 
-**現在：v0.3 実機評価中。初版をGitHub Pagesで公開しています。**
+**現在：v0.4 コンパクト一覧とテーマ選択を実装、ChatGPTのレビュー待ちです。公開中のv0.3の後継になります。**
 
 ▶ [Multi Stopwatchを開く](https://masakiniwa.github.io/Multi-Stopwatch/)
+
+<img alt="スマートフォンでの一覧" src="docs/screenshots/mobile.png" width="200px"> <img alt="ダークテーマ" src="docs/screenshots/mobile-dark.png" width="200px"> <img alt="詳細と操作" src="docs/screenshots/sheet.png" width="200px">
 
 
 ## 現在使えること
 
 - 複数の独立したストップウォッチ、開始・停止、一括停止
+- 1件1行のコンパクト一覧。390×844のスマホで4件以上をそのまま見渡せます
+- 名前やメモでの絞り込み（6件以上で表示）
+- ドラッグ・上下キー・詳細画面のボタンで並べ替え
 - 名前・メモ・4色、目標時間と達成表示、時/分/秒での経過時間の修正
-- 上下ボタンで並べ替え、確認ダイアログ付きのリセット・削除
+- 「端末に合わせる／ライト／ダーク」のテーマ選択。選択は端末内に保存
 - 操作直後の自動保存、閉じている間を含めた計測復元
 - JSONバックアップ・復元、複数画面の同時編集防止
-- スマホ優先のレイアウト、ダークテーマ、キーボード操作、44px以上のタップ領域
+- キーボード操作、読み上げラベル、44px以上のタップ領域
 - PWAインストール用manifest、オフライン起動用Service Worker
+
+行の名前部分を押すと、メモ・編集・リセット・並べ替え・削除をまとめた詳細画面が開きます。
 
 ## 開発
 
@@ -32,7 +39,9 @@ npm run test:browser # Playwrightとブラウザ導入後
 配信対象は `public/` のみ。ローカル計測データはGitHubへ送信しません。
 
 `public/src` は役割ごとに分かれています。`model.js`（計測の純粋関数）、`storage.js`（保存契約）、`ui.js`（描画とダイアログ）、`app.js`（状態と操作の接続）。
-`npm test` は `model.js` と `storage.js` を対象にしたNode.jsのテストです。画面の確認はブラウザで行ってください。
+`npm test` は `model.js` と `storage.js` を対象にしたNode.jsのテストです。`npm run test:browser` はPlaywrightで一覧の密度・タップ領域・並べ替え・テーマ保存・オフライン起動を確認します。
+
+計測データは `multi-stopwatch:state:v1`、テーマなどの表示設定は `multi-stopwatch:prefs:v1` と別のキーに保存します。設定が壊れていても計測データには影響しません。
 
 ## 公開と端末への追加
 

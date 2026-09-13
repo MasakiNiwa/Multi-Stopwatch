@@ -8,6 +8,17 @@
 <meta name="theme-color" content="#0b0e14" media="(prefers-color-scheme:dark)">
 <meta name="description" content="学習や作業の積み重ねを残す、オフライン対応のマルチストップウォッチ。">
 <title>Multi Stopwatch</title>
+<script>
+  // Apply the saved theme before the first paint so a chosen theme never flashes the other one.
+  // The attribute is always explicit, so the stylesheet needs one dark palette instead of two.
+  try {
+    const saved = JSON.parse(localStorage.getItem('multi-stopwatch:prefs:v1') || '{}').theme;
+    const system = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = saved === 'light' || saved === 'dark' ? saved : system;
+  } catch (error) {
+    document.documentElement.dataset.theme = 'light';
+  }
+</script>
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icons/icon-192.png">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
@@ -21,11 +32,16 @@
 <main>
   <header class="intro">
     <div class="brand-mark" aria-hidden="true"><span></span></div>
-    <div>
+    <div class="brand-text">
       <p class="eyebrow">FOCUS, YOUR WAY</p>
       <h1>Multi Stopwatch</h1>
-      <p class="tagline">いくつもの挑戦を、ひとつずつ積み重ねる。</p>
     </div>
+    <fieldset class="theme" id="theme">
+      <legend class="sr-only">テーマ</legend>
+      <label class="theme-option"><input type="radio" name="theme" value="system" checked><span>端末</span></label>
+      <label class="theme-option"><input type="radio" name="theme" value="light"><span>ライト</span></label>
+      <label class="theme-option"><input type="radio" name="theme" value="dark"><span>ダーク</span></label>
+    </fieldset>
   </header>
 
   <div class="summary">
@@ -46,7 +62,14 @@
 
   <p id="notice" role="status"></p>
 
+  <div id="filter-bar" class="filter" hidden>
+    <input id="filter" type="search" placeholder="名前やメモで絞り込む" autocomplete="off" aria-label="計測を名前やメモで絞り込む">
+    <p id="filter-count" class="filter-count" role="status"></p>
+  </div>
+
   <ol id="timers" aria-label="ストップウォッチ"></ol>
+
+  <p id="no-match" class="no-match" hidden>一致する計測がありません。</p>
 
   <div id="empty" class="empty">
     <span class="empty-icon" aria-hidden="true"></span>
@@ -59,6 +82,7 @@
     <summary>データとインストールについて</summary>
     <div class="help-body">
       <p>操作するたびに、このブラウザへ自動保存します。計測中に画面を閉じても、閉じていた時間を含めて復元します。</p>
+      <p>各行の名前部分を押すと、メモ・編集・並べ替え・削除をまとめた画面が開きます。並べ替えは行左端のハンドルをドラッグするか、ハンドルを選んで上下キーでも動かせます。</p>
       <p>フッターに「オフラインで利用できます」と表示されたら、通信なしでも起動できます。対応ブラウザのメニューから「インストール」または「ホーム画面に追加」を選んでください。</p>
       <p>端末の時計を変更すると計測に影響します。ブラウザのデータ削除で記録も消えるため、大切な記録はバックアップしてください。目標に到達しても自動停止や通知はしません。</p>
       <div class="help-actions">
@@ -71,34 +95,50 @@
   <footer>
     <span>小さな一歩も、ちゃんと残る。</span>
     <span id="offline" class="subtle" role="status">オフライン利用を準備しています…</span>
-    <span class="subtle">v0.3 · Preview</span>
+    <span class="subtle">v0.4 · Preview</span>
   </footer>
 </main>
 
 <template id="card">
   <li class="card">
-    <div class="card-head">
-      <h2></h2>
-      <div class="order">
-        <button data-action="up" class="icon" title="上へ移動">↑</button>
-        <button data-action="down" class="icon" title="下へ移動">↓</button>
-      </div>
+    <div class="row">
+      <button data-action="grip" class="grip" type="button" tabindex="0"><span aria-hidden="true">⠿</span></button>
+      <button data-action="toggle" class="toggle" type="button"><span class="glyph" aria-hidden="true"></span></button>
+      <button data-action="open" class="open" type="button">
+        <span class="name"></span>
+        <span class="time">
+          <span class="digits" aria-hidden="true"><span class="h">00</span><u>h</u><span class="m">00</span><u>m</u><span class="sec">00</span><u>s</u></span>
+          <span class="sr-only"></span>
+        </span>
+        <span class="meta">
+          <span class="state"><span class="dot" aria-hidden="true"></span><span class="state-text"></span></span>
+          <span class="meta-note"></span>
+        </span>
+      </button>
     </div>
-    <p class="state"><span class="dot" aria-hidden="true"></span><span class="state-text"></span></p>
-    <p class="time"><span class="digits" aria-hidden="true"><span class="h">00</span><u>h</u><span class="m">00</span><u>m</u><span class="sec">00</span><u>s</u></span><span class="sr-only"></span></p>
     <div class="bar" aria-hidden="true"><span></span></div>
-    <p class="goal"></p>
-    <p class="memo"></p>
-    <div class="actions">
-      <button data-action="toggle" class="primary toggle"></button>
-    </div>
-    <div class="actions sub">
-      <button data-action="edit">編集</button>
-      <button data-action="reset">リセット</button>
-      <button data-action="delete" class="quiet-danger">削除</button>
-    </div>
   </li>
 </template>
+
+<dialog id="sheet" aria-labelledby="sheet-title">
+  <div class="sheet-head">
+    <h2 id="sheet-title"></h2>
+    <p id="sheet-time" class="sheet-time"></p>
+  </div>
+  <p id="sheet-goal" class="sheet-goal"></p>
+  <p id="sheet-memo" class="sheet-memo"></p>
+  <div class="sheet-actions">
+    <button type="button" id="sheet-toggle" class="primary"></button>
+    <button type="button" data-sheet="edit">編集</button>
+    <button type="button" data-sheet="reset">リセット</button>
+    <button type="button" data-sheet="up">↑ 上へ移動</button>
+    <button type="button" data-sheet="down">↓ 下へ移動</button>
+    <button type="button" data-sheet="delete" class="quiet-danger">削除</button>
+  </div>
+  <div class="actions dialog-actions">
+    <button type="button" id="sheet-close">閉じる</button>
+  </div>
+</dialog>
 
 <dialog id="editor" aria-labelledby="editor-title">
   <form id="edit-form">
@@ -144,6 +184,7 @@
   </div>
 </dialog>
 
+<p id="live" class="sr-only" role="status" aria-live="polite"></p>
 <noscript><p class="noscript">計測にはJavaScriptを有効にしてください。</p></noscript>
 </body>
 </html>

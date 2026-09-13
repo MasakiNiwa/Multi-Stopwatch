@@ -1,5 +1,5 @@
 // Bump VERSION for every deployed shell change. No forced takeover during timing.
-const VERSION = 'v0.3.0';
+const VERSION = 'v0.4.0';
 const PREFIX = `multi-stopwatch:${self.registration.scope}:`;
 const CACHE = PREFIX + VERSION;
 const ASSETS = ['./', './index.html', './style.css', './src/app.js', './src/ui.js', './src/model.js', './src/storage.js', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
