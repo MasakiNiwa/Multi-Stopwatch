@@ -20,10 +20,11 @@
   }
 </script>
 <link rel="manifest" href="./manifest.webmanifest">
-<link rel="icon" href="./icons/icon-192.png">
-<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="./icons/icon-32-v6.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon-180-v6.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Stopwatch">
+<meta name="apple-mobile-web-app-title" content="Multi Stopwatch">
 <link rel="stylesheet" href="./style.css">
 <script type="module" src="./src/app.js"></script>
 </head>
@@ -31,17 +32,25 @@
 <a class="skip" href="#timers">計測一覧へ移動</a>
 <main>
   <header class="intro">
-    <div class="brand-mark" aria-hidden="true"><span></span></div>
+    <img class="brand-mark" src="./icons/icon.svg" alt="" width="40" height="40">
     <div class="brand-text">
       <p class="eyebrow">FOCUS, YOUR WAY</p>
       <h1>Multi Stopwatch</h1>
     </div>
-    <fieldset class="theme" id="theme">
-      <legend class="sr-only">テーマ</legend>
-      <label class="theme-option"><input type="radio" name="theme" value="system" checked><span>端末</span></label>
-      <label class="theme-option"><input type="radio" name="theme" value="light"><span>ライト</span></label>
-      <label class="theme-option"><input type="radio" name="theme" value="dark"><span>ダーク</span></label>
-    </fieldset>
+    <div class="header-actions">
+      <button type="button" id="theme-toggle" class="icon-button">
+        <svg class="icon-sun" viewBox="0 0 24 24" width="21" height="21" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="4.4"/>
+          <path d="M12 1.8v2.6M12 19.6v2.6M1.8 12h2.6M19.6 12h2.6M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/>
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" width="21" height="21" aria-hidden="true" fill="currentColor">
+          <path d="M20.7 15.2A8.8 8.8 0 0 1 8.8 3.3a9 9 0 1 0 11.9 11.9z"/>
+        </svg>
+      </button>
+      <button type="button" id="help-open" class="icon-button" aria-label="使い方とデータについて" title="使い方とデータについて">
+        <span class="icon-glyph" aria-hidden="true">?</span>
+      </button>
+    </div>
   </header>
 
   <div class="summary">
@@ -109,24 +118,10 @@
     </aside>
   </div>
 
-  <details class="help">
-    <summary>データとインストールについて</summary>
-    <div class="help-body">
-      <p>操作するたびに、このブラウザへ自動保存します。計測中に画面を閉じても、閉じていた時間を含めて復元します。</p>
-      <p>各行の名前部分を押すと、メモ・編集・並べ替え・削除をまとめた画面が開きます。並べ替えは行左端のハンドルをドラッグするか、ハンドルを選んで上下キーでも動かせます。</p>
-      <p>フッターに「オフラインで利用できます」と表示されたら、通信なしでも起動できます。対応ブラウザのメニューから「インストール」または「ホーム画面に追加」を選んでください。</p>
-      <p>端末の時計を変更すると計測に影響します。ブラウザのデータ削除で記録も消えるため、大切な記録はバックアップしてください。目標に到達しても自動停止や通知はしません。</p>
-      <div class="help-actions">
-        <button id="export">バックアップを保存</button>
-        <label class="file-label">復元（現在の記録を置換）<input id="import" type="file" accept=".json,application/json"></label>
-      </div>
-    </div>
-  </details>
-
   <footer>
     <span>小さな一歩も、ちゃんと残る。</span>
     <span id="offline" class="subtle" role="status">オフライン利用を準備しています…</span>
-    <span class="subtle">v0.5 · Preview</span>
+    <span class="subtle">v0.6</span>
   </footer>
 </main>
 
@@ -170,6 +165,38 @@
     <button type="button" data-group="delete" class="quiet-danger">削除</button>
   </li>
 </template>
+
+<dialog id="help" aria-labelledby="help-title">
+  <h2 id="help-title">使い方とデータについて</h2>
+  <div class="help-body">
+    <section>
+      <h3>基本の操作</h3>
+      <p>「＋ 新しい計測」で名前をつけて追加します。行の丸いボタンで開始と停止、名前の部分を押すと詳細画面が開き、メモ・編集・リセット・並べ替え・削除ができます。</p>
+    </section>
+    <section>
+      <h3>グループ・並べ替え・統計</h3>
+      <p>「グループ」で分類を作り、編集画面で計測に割り当てます。グループを削除しても計測は消えず「未分類」へ移ります。</p>
+      <p>「並べ替える」は選んだ条件をその時点で全件へ一度だけ適用します。適用後も行左端のハンドルをドラッグ、または上下キーで微調整できます。</p>
+      <p>「統計」に、累計・グループ別の小計と割合・累計時間ランキングが出ます。横長で幅のある画面では一覧の右側に並びます。各計測が今持っている累計の集計で、開始と停止の履歴はまだ記録していません。</p>
+    </section>
+    <section>
+      <h3>インストールとオフライン</h3>
+      <p>フッターに「オフラインで利用できます」と出れば、通信なしでも起動できます。ブラウザのメニューから「インストール」または「ホーム画面に追加」を選ぶと、アプリのように単体で開けます。</p>
+    </section>
+    <section>
+      <h3>データについて</h3>
+      <p>操作するたびに、この端末のブラウザへ保存します。外部へ送信しません。計測中に画面を閉じても、閉じていた時間を含めて復元します。</p>
+      <p>ブラウザのデータを削除すると記録も消えます。端末の時計を変更すると計測に影響します。目標に到達しても自動停止や通知はしません。大切な記録はバックアップしてください。</p>
+      <div class="help-actions">
+        <button type="button" id="export">バックアップを保存</button>
+        <label class="file-label">復元（現在の記録を置換）<input id="import" type="file" accept=".json,application/json"></label>
+      </div>
+    </section>
+  </div>
+  <div class="actions dialog-actions">
+    <button type="button" id="help-close">閉じる</button>
+  </div>
+</dialog>
 
 <dialog id="groups" aria-labelledby="groups-title">
   <h2 id="groups-title">グループ</h2>

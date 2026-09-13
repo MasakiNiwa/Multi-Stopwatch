@@ -1,80 +1,129 @@
 # Multi Stopwatch
 
-学習や作業の積み重ねを残す、オフライン対応のマルチストップウォッチ。
-Flutter版 [SimpleMultiStopwatch](https://github.com/MasakiNiwa/SimpleMultiStopwatch) を参考に、HTML / CSS / JavaScriptで作り直すプロジェクトです。
+複数のストップウォッチを同時に動かして、勉強や作業の積み重ねを記録するWebアプリです。
+インストールすればオフラインでも使えます。記録は端末の中だけに保存され、どこにも送信されません。
 
-**現在：v0.5 グループ・一括並べ替え・統計を実装、ChatGPTのレビュー待ちです。公開中のv0.4の後継になります。**
+インターフェースは日本語です。
 
-▶ [Multi Stopwatchを開く](https://masakiniwa.github.io/Multi-Stopwatch/)
+## 今すぐ使う
 
-<img alt="スマートフォンでの一覧" src="docs/screenshots/mobile.png" width="200px"> <img alt="統計タブ" src="docs/screenshots/mobile-stats.png" width="200px"> <img alt="ダークテーマ" src="docs/screenshots/mobile-dark.png" width="200px">
+**▶ https://masakiniwa.github.io/Multi-Stopwatch/**
 
-<img alt="横長画面では一覧と統計を並べて表示" src="docs/screenshots/desktop.png" width="620px">
+登録もインストールも不要で、開いたらそのまま使えます。
 
+[![Checks](https://github.com/MasakiNiwa/Multi-Stopwatch/actions/workflows/check.yml/badge.svg)](https://github.com/MasakiNiwa/Multi-Stopwatch/actions/workflows/check.yml)
+[![Deploy Pages](https://github.com/MasakiNiwa/Multi-Stopwatch/actions/workflows/pages.yml/badge.svg)](https://github.com/MasakiNiwa/Multi-Stopwatch/actions/workflows/pages.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## 現在使えること
+## 画面
 
-- 複数の独立したストップウォッチ、開始・停止、一括停止
-- 1件1行のコンパクト一覧。390×844のスマホで4件以上をそのまま見渡せます
-- **グループ**で計測を分類。グループを削除しても計測は消えず「未分類」へ移ります
-- **一括並べ替え**（名前・累計時間・状態・グループ・色・目標進捗の11条件）。適用後もドラッグや上下キーで微調整できます
-- **統計**：全体の累計、計測中の件数、グループ別の小計と割合、累計時間ランキング
-- 縦長画面は「計測／統計」のタブ、横長で幅のある画面は一覧と統計を左右に並べて表示
-- 名前やメモでの絞り込み（6件以上で表示）
-- ドラッグ・上下キー・詳細画面のボタンで並べ替え
-- 名前・メモ・4色、目標時間と達成表示、時/分/秒での経過時間の修正
-- 「端末に合わせる／ライト／ダーク」のテーマ選択。選択は端末内に保存
-- 操作直後の自動保存、閉じている間を含めた計測復元
-- JSONバックアップ・復元（読み込みはv1/v2の両方に対応）、複数画面の同時編集防止
-- キーボード操作、読み上げラベル、44px以上のタップ領域
-- PWAインストール用manifest、オフライン起動用Service Worker
+<img alt="計測一覧" src="docs/screenshots/mobile.png" width="200px"> <img alt="統計" src="docs/screenshots/mobile-stats.png" width="200px"> <img alt="ダークテーマ" src="docs/screenshots/mobile-dark.png" width="200px">
 
-行の名前部分を押すと、メモ・編集・リセット・並べ替え・削除をまとめた詳細画面が開きます。
+<img alt="横長画面では一覧と統計を並べて表示" src="docs/screenshots/landscape.png" width="620px">
 
-統計は、各計測が今持っている累計時間を集計したものです。セッション履歴はまだ記録していないため、日別・週別の集計はありません。
+## できること
 
-## 開発
+- **複数の同時計測** — 1件1行のコンパクトな一覧。390×844のスマートフォンで4件以上を一度に見渡せます
+- **グループ** — 学習・仕事などに分類。グループを削除しても計測は消えず「未分類」へ移ります
+- **並べ替え** — 名前・累計時間・状態・グループ・色・目標進捗の11条件で一括適用。適用後もドラッグや上下キーで微調整できます
+- **絞り込み** — 名前やメモで検索（6件以上のとき表示）
+- **統計** — 全体の累計、計測中の件数、グループ別の小計と割合、累計時間ランキング
+- **目標** — 計測ごとに目標時間を設定し、進捗と達成を表示
+- **オフライン対応** — 一度開けば通信なしでも起動します
+- **レスポンシブ** — 縦長画面は「計測／統計」のタブ、横長で幅のある画面は左右に並べて表示
+- **ライト / ダーク** — 初回は端末の設定に従い、ヘッダーのボタンで切り替えられます
+- **バックアップ** — JSONで書き出し・読み込み
 
-Node.js 24以降、Python 3。npmの依存インストールやビルドは不要です。
+記録の単位は各計測の累計時間です。開始と停止の履歴はまだ保存していないため、日別・週別の集計はありません。
 
-```sh
-npm test
-npm start
-npm run test:browser # Playwrightとブラウザ導入後
-```
+## 使い方
 
-ブラウザで http://localhost:8080 を開きます。HTMLファイルの直接起動ではなくHTTPサーバーを使用してください。
-配信対象は `public/` のみ。ローカル計測データはGitHubへ送信しません。
+1. 「＋ 新しい計測」で名前をつけて追加します
+2. 行の丸いボタンで開始・停止します。画面を閉じても、閉じていた時間を含めて再開します
+3. 名前の部分を押すと詳細画面が開き、メモ・編集・リセット・並べ替え・削除ができます
+4. 「グループ」で分類を作り、編集画面で割り当てます
+5. ヘッダーの **?** ボタンにヘルプとバックアップ操作があります
 
-`public/src` は役割ごとに分かれています。`model.js`（計測とグループの純粋関数、schema移行）、`stats.js`（集計）、`sorting.js`（一括並べ替え）、`storage.js`（保存契約）、`ui.js`（描画とダイアログ）、`app.js`（状態と操作の接続）。
-`npm test` は `model.js` と `storage.js` を対象にしたNode.jsのテストです。`npm run test:browser` はPlaywrightで一覧の密度・タップ領域・並べ替え・テーマ保存・オフライン起動を確認します。
+### 端末に追加する（PWA）
 
-計測データは `multi-stopwatch:state:v1`、テーマなどの表示設定は `multi-stopwatch:prefs:v1` と別のキーに保存します。設定が壊れていても計測データには影響しません。
-計測データのschemaはv2です。キー名は記録の名前で、schemaの版は値の中の `version` が持ちます。v1の記録は読み込み時にv2へ移行し（既存の計測は「未分類」）、次の保存でv2として書かれます。
+フッターに「オフラインで利用できます」と表示されたら、ブラウザのメニューから「インストール」または「ホーム画面に追加」を選ぶと、アプリのように単体で開けます。
 
-## 公開と端末への追加
+すでにインストールしている場合、アイコンの更新はOS側のキャッシュの都合ですぐに反映されないことがあります。気になる場合は一度削除して追加し直してください。
 
-1. レビュー後にmainへマージ。
-2. GitHubの Settings → Pages → Source を **GitHub Actions** に設定。
-3. Actions → **Deploy Pages** → **Run workflow**（main）を実行。
-4. 成功後、ワークフローが表示する公開URLを開く。
-5. 「オフラインで利用できます」を確認。対応ブラウザの「インストール」または「ホーム画面に追加」を使う。
+## データとプライバシー
 
-初期設定では意図しない公開を避けるため手動デプロイです。初回公開後、自動公開にする場合は `pages.yml` にmainへのpushトリガーを追加できます。
-相対パス設計のため `/Multi-Stopwatch/` のようなプロジェクト配下にも配置可能です。
-更新は全アプリ画面を閉じて再度開くと反映されます。配信ファイル変更時は `sw.js` のVERSIONを更新してください。
+- 記録は**この端末のブラウザ内だけ**に保存します（`localStorage`）。サーバーへ送信しません。アカウントも解析も広告もありません
+- ブラウザのデータを削除すると記録も消えます。**大切な記録はヘルプからバックアップ**してください
+- バックアップはJSONファイルです。読み込みは現在の記録を置き換えます
+- 端末の時計を変更すると計測に影響します
+- 同じブラウザで複数のタブを開いた場合、編集できるのは最初の画面だけです（他は閲覧専用）
 
 ## 制約
 
-- 初回アクセスは通信が必要。キャッシュやサイトデータが消去された場合も再接続が必要です。
-- 閉じている間は常駐処理せず、端末時刻の差分で復元。端末時刻の手動変更・補正は計測に影響します。
-- 目標到達時のバックグラウンド通知、自動停止、端末間同期はありません。
-- ブラウザ単位の保存です。インストール前後の共有状況もブラウザに依存します。大切な記録はバックアップしてください。
-- Web Locks対応ブラウザで編集できます。複数画面では最初の画面だけ編集可能。他を閉じた後、再読込で編集権を取得します。
-- 上限100件、各計測10年。競技用の精密計測ではなく作業・学習時間向け。
-- 元Flutter版からデータを直接移行する機能は未実装。
+- 最大100件、1件あたり10年まで
+- 目標に到達しても自動停止や通知はしません
+- 端末間の同期はありません
+- 競技用の精密計測ではなく、作業・学習時間の記録向けです
+- 初回アクセスには通信が必要です
 
-## 引き継ぎ
+## 開発
 
-[設計と旧版分析](docs/design.md) → [Claudeへの引き継ぎ](docs/handoff.md) → [検証項目](docs/acceptance.md) の順で読んでください。
-`AGENTS.md` と `CLAUDE.md` に協業ルールがあります。既存LICENSE（MIT）を継承しています。
+利用時にビルドは不要です（`public/` をそのまま配信します）。テストと開発ツールにはNode.js 24以降が必要です。
+
+```sh
+npm ci                 # 開発・テスト用の依存（Playwright）を入れる
+npm start              # http://localhost:8080 でプレビュー
+npm test               # Node.jsのユニットテスト
+npm run test:browser   # Playwrightのブラウザテスト
+```
+
+ファイルを直接開かず、HTTPサーバー経由で表示してください（Service Workerとモジュール読み込みのため）。
+
+### 構成
+
+```
+public/            配信するファイルはこれだけ
+  index.html       画面の構造
+  style.css        Material 3 inspired のデザイントークン
+  manifest.webmanifest
+  sw.js            オフライン用Service Worker
+  icons/           icon.svg / icon-maskable.svg が原本、PNGはそこから生成
+  src/
+    model.js       計測・グループの純粋関数、保存schemaと移行
+    stats.js       集計（純粋関数）
+    sorting.js     一括並べ替え（純粋関数）
+    storage.js     localStorageの読み書き契約
+    ui.js          描画とダイアログ
+    app.js         状態・操作・イベントの接続
+tests/             Node.jsのユニットテスト
+scripts/           Playwrightのブラウザテスト
+docs/              設計・検証記録・スクリーンショット
+```
+
+集計・並べ替え・schema移行はDOMから切り離した純粋関数にしてあり、ユニットテストで仕様を固定しています。外部のUIフレームワークやランタイム依存はありません。
+
+### 自動テストと公開
+
+- `main` と Pull Request で **Checks**（ユニットテスト＋Playwright）が動きます
+- `main` への push で **Deploy Pages** が GitHub Pages へ自動公開します
+
+## これから
+
+実際に使って感じた不便から順に直していく方針です。
+
+- [Roadmap（次期改善候補）](https://github.com/MasakiNiwa/Multi-Stopwatch/issues/10)
+- [親子で時間を集計するセットストップウォッチ（将来構想）](https://github.com/MasakiNiwa/Multi-Stopwatch/issues/8)
+
+## フィードバック
+
+不具合や要望は [Issues](https://github.com/MasakiNiwa/Multi-Stopwatch/issues) へお寄せください。
+
+元になったFlutter版：[SimpleMultiStopwatch](https://github.com/MasakiNiwa/SimpleMultiStopwatch)
+
+## ライセンス
+
+[MIT License](LICENSE)
+
+---
+
+開発者向けの記録：[設計](docs/design.md) ／ [検証記録](docs/acceptance.md) ／ [引き継ぎ](docs/handoff.md) ／ [協業ルール](AGENTS.md)

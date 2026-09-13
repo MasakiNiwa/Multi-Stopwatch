@@ -152,7 +152,7 @@ const v1Record = {
       .filter(card => { const box = card.getBoundingClientRect(); return box.top >= 0 && box.bottom <= limit; }).length;
   });
   assert.ok(density >= 4, `only ${density} rows visible at 390x844`);
-  const smallest = await page.evaluate(() => Math.min(...[...document.querySelectorAll('button:not([hidden]), .theme-option, select, input[type=search]')]
+  const smallest = await page.evaluate(() => Math.min(...[...document.querySelectorAll('button:not([hidden]), select, input[type=search]')]
     .map(el => el.getBoundingClientRect())
     .filter(box => box.width > 0)
     .map(box => Math.min(box.width, box.height))));
@@ -169,9 +169,18 @@ const v1Record = {
   assert.equal(await page.evaluate(() => document.activeElement.dataset.action), 'grip');
 
   // Theme choice applies at once and survives a reload, together with groups and order.
-  await page.getByRole('radio', { name: 'ダーク' }).check();
+  // One button flips to the opposite of what is on screen and says so.
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light', '端末がライトなら初回はライト');
+  assert.equal(await page.getAttribute('#theme-toggle', 'aria-label'), 'ダークテーマに切り替える');
+  await page.locator('#theme-toggle').click();
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'dark');
+  assert.equal(await page.getAttribute('#theme-toggle', 'aria-label'), 'ライトテーマに切り替える');
   assert.equal(await page.getAttribute('meta[name=theme-color]', 'content'), '#121316');
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('multi-stopwatch:prefs:v1')).theme), 'dark');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.icon-moon')).display), 'none', 'ダーク中は太陽（次の状態）を出す');
+  await page.locator('#theme-toggle').click();
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
+  await page.locator('#theme-toggle').click();
 
   // The list's action bar does not sit over the statistics while they are being read.
   await page.locator('#tab-stats').click();
@@ -226,7 +235,67 @@ const v1Record = {
   assert.equal(await page.locator('.state-text').first().textContent(), '停止中');
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('multi-stopwatch:state:v1')).version), 2);
 
+  // Help: opens from the header, carries the backup controls, closes on Escape, returns focus.
+  await page.locator('#help-open').click();
+  await page.locator('#help[open]').waitFor();
+  assert.equal(await page.locator('#help-title').textContent(), '使い方とデータについて');
+  assert.equal(await page.locator('#help #export').isVisible(), true, 'バックアップ操作がヘルプ内にあること');
+  assert.equal(await page.locator('#help #import').count(), 1);
+  assert.equal(await page.evaluate(() => document.querySelectorAll('details.help').length), 0, '旧ヘルプの二重導線が残っていないこと');
+  const beforeHelp = await page.evaluate(() => scrollY);
+  await page.keyboard.press('Escape');
+  await page.locator('#help[open]').waitFor({ state: 'detached' }).catch(() => {});
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'help-open', 'フォーカスが開いたボタンへ戻ること');
+  assert.equal(await page.evaluate(() => scrollY), beforeHelp, 'ヘルプを閉じてもスクロール位置を壊さないこと');
+  await page.locator('#help-open').click();
+  await page.locator('#help[open]').waitFor();
+  await page.locator('#help-close').click();
+  assert.equal(await page.evaluate(() => document.querySelector('#help').open), false);
+
+  // Every icon the browser and the home screen ask for must actually exist.
+  const iconStatuses = await page.evaluate(async () => {
+    const manifestHref = document.querySelector('link[rel=manifest]').href;
+    const manifest = await (await fetch(manifestHref)).json();
+    const urls = [
+      ...[...document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]')].map(link => link.href),
+      ...manifest.icons.map(icon => new URL(icon.src, manifestHref).href),
+    ];
+    const seen = {};
+    for (const url of [...new Set(urls)]) seen[new URL(url).pathname.split('/').pop()] = (await fetch(url)).status;
+    return { seen, manifest: { name: manifest.name, short_name: manifest.short_name, icons: manifest.icons } };
+  });
+  for (const [file, status] of Object.entries(iconStatuses.seen)) assert.equal(status, 200, `${file} が ${status}`);
+  assert.ok(Object.keys(iconStatuses.seen).length >= 6, `参照アイコンが少なすぎる: ${Object.keys(iconStatuses.seen)}`);
+  assert.equal(iconStatuses.manifest.name, 'Multi Stopwatch');
+  assert.equal(iconStatuses.manifest.short_name, 'Multi Stopwatch');
+  assert.equal(await page.getAttribute('meta[name="apple-mobile-web-app-title"]', 'content'), 'Multi Stopwatch');
+  // any and maskable must be separate files, not the same image declared twice.
+  const anySources = iconStatuses.manifest.icons.filter(icon => icon.purpose === 'any').map(icon => icon.src);
+  const maskableSources = iconStatuses.manifest.icons.filter(icon => icon.purpose === 'maskable').map(icon => icon.src);
+  assert.ok(anySources.length >= 2 && maskableSources.length >= 2, 'any と maskable をそれぞれ用意すること');
+  assert.equal(anySources.some(src => maskableSources.includes(src)), false, 'any と maskable が同じ資産を指していないこと');
+
+  // The header stays on one line and keeps 44px targets on the narrowest phones.
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const header = await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll('.header-actions button')].map(b => b.getBoundingClientRect());
+      const intro = document.querySelector('.intro').getBoundingClientRect();
+      return {
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        smallest: Math.round(Math.min(...buttons.map(box => Math.min(box.width, box.height)))),
+        rows: new Set(buttons.map(box => Math.round(box.top))).size,
+        withinIntro: buttons.every(box => box.right <= intro.right + 0.5),
+      };
+    });
+    assert.equal(header.overflow, 0, `${width}px で横スクロールが出ている`);
+    assert.ok(header.smallest >= 44, `${width}px でヘッダーのボタンが ${header.smallest}px`);
+    assert.equal(header.rows, 1, `${width}px でヘッダーのボタンが折り返している`);
+    assert.equal(header.withinIntro, true);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+
   assert.deepEqual(errors, []);
   await browser.close();
-  console.log(`PASS: v1→v2 migration, groups CRUD, statistics, bulk sort, compact list (${density} rows, ${smallest}px targets), tabs/split layout, theme + order persistence, offline start, no browser errors`);
+  console.log(`PASS: v1→v2 migration, groups CRUD, statistics, bulk sort, compact list (${density} rows, ${smallest}px targets), tabs/split layout, one-button theme + persistence, help dialog, icon set, offline start, no browser errors`);
 })().catch(error => { console.error(error); process.exit(1); });
