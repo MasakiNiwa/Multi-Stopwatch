@@ -214,7 +214,8 @@ body[data-layout="split"] #panel-stats { position: sticky; top: 12px; max-height
 
 /* Help and footer */
 /* Help dialog: the text scrolls, the close button stays reachable on a short screen. */
-#help { display: flex; flex-direction: column; }
+#help:not([open]) { display: none; }
+#help[open] { display: flex; flex-direction: column; }
 #help .help-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 #help .dialog-actions { flex: none; }
 .help-body { color: var(--on-surface-variant); font-size: 13px; line-height: 1.9; }

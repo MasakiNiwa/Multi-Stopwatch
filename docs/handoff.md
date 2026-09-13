@@ -305,3 +305,9 @@ prefsのschemaは変更していません（`system|light|dark` のまま）。�
 Playwrightに「1ボタン切替とaria-label」「初回は端末設定」「prefs保存」「ヘルプ開閉・Escape・フォーカス復帰・スクロール位置」「旧ヘルプ導線の不在」「全アイコンURLが200」「any/maskableが別資産」「manifest名とAppleタイトル」「320/390pxのヘッダー」を追加しました。
 公開URLそのものへの到達は実行環境のegress制限で確認できていません。Pagesワークフローの成功までは確認済みです。
 実機（Android/iOS）でのアイコン差し替え、ドラッグの感触、画面回転、スクリーンリーダーは未確認です。
+
+## v0.6.1 ヘルプの常時表示を修正（2026-09-13 / ChatGPT）
+
+`#help { display: flex }` が、`open` 属性のない `dialog` を隠すブラウザ標準スタイルを上書きし、ヘルプ本文がページ末尾へ常時表示されていました。`#help:not([open])` を明示的に非表示、`#help[open]` のときだけflexに変更しました。
+
+Playwrightへ初期状態と閉じるボタン操作後の `display: none` を追加。Service Workerのキャッシュ版と画面上の版表示をv0.6.1へ更新しています。
