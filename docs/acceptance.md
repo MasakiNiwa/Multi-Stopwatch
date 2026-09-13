@@ -174,6 +174,14 @@ schemaと移行
 
 未検証：公開URL `https://masakiniwa.github.io/Multi-Stopwatch/` への到達はこの実行環境のegress制限で確認できていません。Pagesワークフローの成功までを確認しています。
 
+### 2026-09-13 / ChatGPT（v0.6.1 ホットフィックス）
+
+- [x] 初期表示で閉じたヘルプの算出済み `display` が `none`
+- [x] 閉じるボタン操作後もヘルプの算出済み `display` が `none`
+- [x] `open` 中だけflexレイアウトになり、本文スクロールと固定フッターを維持
+- [x] Service Workerのキャッシュ版を更新し、古いCSSを置き換える
+- [x] `npm test` 32件成功、`git diff --check` 成功
+
 ## 公開前チェック（未完了の項目を推測で合格にしない）
 
 実機とブラウザ固有の挙動は未確認。ヘッドレスChromiumでは再現できない。

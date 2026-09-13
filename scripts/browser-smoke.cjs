@@ -236,6 +236,7 @@ const v1Record = {
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('multi-stopwatch:state:v1')).version), 2);
 
   // Help: opens from the header, carries the backup controls, closes on Escape, returns focus.
+  assert.equal(await page.locator('#help').evaluate(element => getComputedStyle(element).display), 'none', '閉じたヘルプが本文として表示されないこと');
   await page.locator('#help-open').click();
   await page.locator('#help[open]').waitFor();
   assert.equal(await page.locator('#help-title').textContent(), '使い方とデータについて');
@@ -251,6 +252,7 @@ const v1Record = {
   await page.locator('#help[open]').waitFor();
   await page.locator('#help-close').click();
   assert.equal(await page.evaluate(() => document.querySelector('#help').open), false);
+  assert.equal(await page.locator('#help').evaluate(element => getComputedStyle(element).display), 'none', '閉じるボタン後もヘルプが非表示であること');
 
   // Every icon the browser and the home screen ask for must actually exist.
   const iconStatuses = await page.evaluate(async () => {

@@ -1,5 +1,5 @@
 // Bump VERSION for every deployed shell change. No forced takeover during timing.
-const VERSION = 'v0.6.0';
+const VERSION = 'v0.6.1';
 const PREFIX = `multi-stopwatch:${self.registration.scope}:`;
 const CACHE = PREFIX + VERSION;
 const ASSETS = [
