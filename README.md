@@ -3,7 +3,9 @@
 学習や作業の積み重ねを残す、オフライン対応のマルチストップウォッチ。
 Flutter版 [SimpleMultiStopwatch](https://github.com/MasakiNiwa/SimpleMultiStopwatch) を参考に、HTML / CSS / JavaScriptで作り直すプロジェクトです。
 
-**現在：v0.3 公開前プレビュー。Claudeの初版をChatGPTが技術レビューし、現代的なビジュアルへ再設計しています。公開サイトはまだありません。**
+**現在：v0.3 実機評価中。初版をGitHub Pagesで公開しています。**
+
+▶ [Multi Stopwatchを開く](https://masakiniwa.github.io/Multi-Stopwatch/)
 
 
 ## 現在使えること
