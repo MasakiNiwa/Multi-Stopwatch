@@ -1,14 +1,20 @@
-import { validate } from './model.js';
+import { emptyState, migrate, validate } from './model.js';
+// The key names the record, not its schema: the version inside the value is what migrates.
 export const KEY = 'multi-stopwatch:state:v1';
+// Reads any supported schema and hands back the current one. A newer or broken value still throws,
+// so the app falls back to read-only instead of overwriting records it cannot understand.
+export function readState(text) {
+  return validate(migrate(JSON.parse(text)));
+}
 export function load(storage) {
   const raw = storage.getItem(KEY);
-  return raw === null ? { version: 1, timers: [] } : validate(JSON.parse(raw));
+  return raw === null ? emptyState() : readState(raw);
 }
 export function save(storage, state) {
   storage.setItem(KEY, JSON.stringify(validate(state)));
 }
 
-// UI preferences live under their own key so the stopwatch records keep schema v1 untouched.
+// UI preferences live under their own key so the stopwatch records keep their own schema and migration.
 export const PREFS_KEY = 'multi-stopwatch:prefs:v1';
 export const THEMES = ['system', 'light', 'dark'];
 export const DEFAULT_PREFS = { version: 1, theme: 'system' };

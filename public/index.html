@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#f3f5f9" media="(prefers-color-scheme:light)">
-<meta name="theme-color" content="#0b0e14" media="(prefers-color-scheme:dark)">
+<meta name="theme-color" content="#fbfaff" media="(prefers-color-scheme:light)">
+<meta name="theme-color" content="#121316" media="(prefers-color-scheme:dark)">
 <meta name="description" content="学習や作業の積み重ねを残す、オフライン対応のマルチストップウォッチ。">
 <title>Multi Stopwatch</title>
 <script>
@@ -62,20 +62,51 @@
 
   <p id="notice" role="status"></p>
 
-  <div id="filter-bar" class="filter" hidden>
-    <input id="filter" type="search" placeholder="名前やメモで絞り込む" autocomplete="off" aria-label="計測を名前やメモで絞り込む">
-    <p id="filter-count" class="filter-count" role="status"></p>
+  <div id="view-tabs" class="tabs" role="tablist" aria-label="表示の切り替え">
+    <button type="button" role="tab" id="tab-timers" aria-controls="panel-timers" aria-selected="true">計測</button>
+    <button type="button" role="tab" id="tab-stats" aria-controls="panel-stats" aria-selected="false" tabindex="-1">統計</button>
   </div>
 
-  <ol id="timers" aria-label="ストップウォッチ"></ol>
+  <div class="columns">
+    <section id="panel-timers" aria-labelledby="tab-timers">
+      <div class="tools">
+        <input id="filter" type="search" placeholder="名前やメモで絞り込む" autocomplete="off" aria-label="計測を名前やメモで絞り込む" hidden>
+        <p id="filter-count" class="filter-count" role="status"></p>
+        <div class="tools-row">
+          <label class="sr-only" for="sort">並べ替えの条件</label>
+          <select id="sort"></select>
+          <button type="button" id="apply-sort">並べ替える</button>
+          <button type="button" id="manage-groups">グループ</button>
+        </div>
+      </div>
 
-  <p id="no-match" class="no-match" hidden>一致する計測がありません。</p>
+      <ol id="timers" aria-label="ストップウォッチ"></ol>
 
-  <div id="empty" class="empty">
-    <span class="empty-icon" aria-hidden="true"></span>
-    <p class="empty-lead">最初の一歩を記録しよう</p>
-    <p>「新しい計測」で名前をつけると、その時間がここに積み重なります。</p>
-    <p class="subtle">例：勉強、読書、開発、練習</p>
+      <p id="no-match" class="no-match" hidden>一致する計測がありません。</p>
+
+      <div id="empty" class="empty">
+        <span class="empty-icon" aria-hidden="true"></span>
+        <p class="empty-lead">最初の一歩を記録しよう</p>
+        <p>「新しい計測」で名前をつけると、その時間がここに積み重なります。</p>
+        <p class="subtle">例：勉強、読書、開発、練習</p>
+      </div>
+    </section>
+
+    <aside id="panel-stats" aria-labelledby="tab-stats" hidden>
+      <div class="stat-top">
+        <div><span class="stat-label">累計</span><strong id="stat-total" class="stat-total">00:00:00</strong></div>
+        <div><span class="stat-label">計測中</span><strong id="stat-running" class="stat-count">0 / 0</strong></div>
+      </div>
+      <p id="stat-empty" class="stat-empty">計測を追加すると、ここに累計が集まります。</p>
+      <section class="stat-block" id="stat-group-block">
+        <h3>グループ別</h3>
+        <ul id="stat-groups" class="stat-list"></ul>
+      </section>
+      <section class="stat-block" id="stat-rank-block">
+        <h3>累計時間ランキング</h3>
+        <ol id="stat-ranking" class="stat-list"></ol>
+      </section>
+    </aside>
   </div>
 
   <details class="help">
@@ -95,7 +126,7 @@
   <footer>
     <span>小さな一歩も、ちゃんと残る。</span>
     <span id="offline" class="subtle" role="status">オフライン利用を準備しています…</span>
-    <span class="subtle">v0.4 · Preview</span>
+    <span class="subtle">v0.5 · Preview</span>
   </footer>
 </main>
 
@@ -112,6 +143,7 @@
         </span>
         <span class="meta">
           <span class="state"><span class="dot" aria-hidden="true"></span><span class="state-text"></span></span>
+          <span class="meta-group"></span>
           <span class="meta-note"></span>
         </span>
       </button>
@@ -120,11 +152,48 @@
   </li>
 </template>
 
+<template id="stat-row">
+  <li class="stat-item">
+    <span class="stat-rank"></span>
+    <span class="stat-name"></span>
+    <span class="stat-time"></span>
+    <span class="stat-sub"></span>
+    <span class="stat-share"></span>
+    <span class="bar" aria-hidden="true"><span></span></span>
+  </li>
+</template>
+
+<template id="group-row">
+  <li class="group-row">
+    <input class="group-name" maxlength="40" autocomplete="off">
+    <span class="group-count"></span>
+    <button type="button" data-group="delete" class="quiet-danger">削除</button>
+  </li>
+</template>
+
+<dialog id="groups" aria-labelledby="groups-title">
+  <h2 id="groups-title">グループ</h2>
+  <p class="dialog-note">グループを削除しても計測は消えず、「未分類」へ移ります。名前を書き換えると保存します。</p>
+  <ul id="group-list" class="group-list"></ul>
+  <p id="group-empty" class="subtle">まだグループがありません。</p>
+  <form id="group-add">
+    <label class="field">新しいグループ
+      <input name="groupName" maxlength="40" autocomplete="off" placeholder="例：学習">
+    </label>
+    <p id="group-error" class="form-error" role="alert"></p>
+    <div class="actions dialog-actions">
+      <button type="submit" class="primary">追加</button>
+      <button type="button" id="groups-close">閉じる</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="sheet" aria-labelledby="sheet-title">
   <div class="sheet-head">
     <h2 id="sheet-title"></h2>
     <p id="sheet-time" class="sheet-time"></p>
   </div>
+  <p id="sheet-group" class="sheet-goal"></p>
   <p id="sheet-goal" class="sheet-goal"></p>
   <p id="sheet-memo" class="sheet-memo"></p>
   <div class="sheet-actions">
@@ -153,20 +222,34 @@
       <label class="swatch" data-color="rose"><input type="radio" name="color" value="rose"><span>ローズ</span></label>
       <label class="swatch" data-color="amber"><input type="radio" name="color" value="amber"><span>アンバー</span></label>
     </fieldset>
+    <label class="field">グループ
+      <select name="group"></select>
+    </label>
     <label class="field">メモ
       <textarea name="memo" maxlength="1000" rows="2" placeholder="任意"></textarea>
     </label>
-    <fieldset class="field split">
-      <legend>目標<span class="hint">0のままなら目標なし</span></legend>
-      <label>時間<input name="targetH" type="number" min="0" max="87600" step="1" inputmode="numeric" value="0"></label>
-      <label>分<input name="targetM" type="number" min="0" max="59" step="1" inputmode="numeric" value="0"></label>
+    <fieldset class="field">
+      <legend>目標<span class="hint">「なし」なら目標を設定しません</span></legend>
+      <div class="presets" id="target-presets">
+        <button type="button" data-preset="0">なし</button>
+        <button type="button" data-preset="15">15分</button>
+        <button type="button" data-preset="30">30分</button>
+        <button type="button" data-preset="60">1時間</button>
+        <button type="button" data-preset="120">2時間</button>
+      </div>
+      <div class="split-inputs">
+        <label>時間<input name="targetH" type="number" min="0" max="87600" step="1" inputmode="numeric" enterkeyhint="next"></label>
+        <label>分<input name="targetM" type="number" min="0" max="59" step="1" inputmode="numeric" enterkeyhint="next"></label>
+      </div>
     </fieldset>
-    <fieldset class="field split" id="elapsed-fields">
-      <legend>経過時間の修正<span class="hint">変更した場合だけ反映します</span></legend>
-      <label>時間<input name="elapsedH" type="number" min="0" max="87600" step="1" inputmode="numeric" value="0"></label>
-      <label>分<input name="elapsedM" type="number" min="0" max="59" step="1" inputmode="numeric" value="0"></label>
-      <label>秒<input name="elapsedS" type="number" min="0" max="59" step="1" inputmode="numeric" value="0"></label>
-    </fieldset>
+    <details class="field correction" id="elapsed-fields">
+      <summary>経過時間の修正<span class="hint" id="elapsed-current"></span></summary>
+      <div class="split-inputs">
+        <label>時間<input name="elapsedH" type="number" min="0" max="87600" step="1" inputmode="numeric" enterkeyhint="next"></label>
+        <label>分<input name="elapsedM" type="number" min="0" max="59" step="1" inputmode="numeric" enterkeyhint="next"></label>
+        <label>秒<input name="elapsedS" type="number" min="0" max="59" step="1" inputmode="numeric" enterkeyhint="done"></label>
+      </div>
+    </details>
     <p id="edit-error" class="form-error" role="alert"></p>
     <div class="actions dialog-actions">
       <button type="submit" class="primary">保存</button>
