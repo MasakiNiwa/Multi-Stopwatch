@@ -73,9 +73,10 @@ function render() {
   if (state.timers.length < 6 && query !== '') { query = ''; $('#filter').value = ''; }
   groups = new Map(state.groups.map(group => [group.id, group.name]));
   shown = [];
-  const visibleExpanded = new Set(expanded);
+  const visibleExpanded = new Set(expanded), childCounts = new Map();
   for (const item of state.timers.filter(t => t.parentId === null)) {
     const children = item.kind === 'set' ? childrenOf(state, item.id) : [];
+    if (item.kind === 'set') childCounts.set(item.id, children.length);
     const matchingChildren = children.filter(t => matches(t, query));
     const parentMatches = matches(item, query);
     if (!parentMatches && matchingChildren.length === 0) continue;
@@ -83,7 +84,7 @@ function render() {
     if (query.trim() && children.length) visibleExpanded.add(item.id);
     if (visibleExpanded.has(item.id)) shown.push(...(query.trim() && !parentMatches ? matchingChildren : children));
   }
-  ui.sync(shown, { editable: editable(), reorderable: reorderable(), expanded: visibleExpanded, deleting, canAdd: timerCount() < MAX_TIMERS });
+  ui.sync(shown, { editable: editable(), reorderable: reorderable(), expanded: visibleExpanded, deleting, canAdd: timerCount() < MAX_TIMERS, childCounts });
   ui.setListState({
     hasTimers: state.timers.length > 0, shown: shown.length, count: state.timers.length,
     filtering: query.trim() !== '', editable: editable(),
@@ -140,7 +141,12 @@ $('#delete-mode').onclick = () => {
 function clearUndo() { undoState = null; $('#undo-delete').hidden = true; }
 $('#dismiss-undo').onclick = clearUndo;
 $('#undo').onclick = () => {
-  if (undoState && commit(undoState)) ui.notice('削除を取り消しました。');
+  const restored = undoState;
+  if (restored && commit(restored)) {
+    ui.notice('削除を取り消しました。');
+    ui.announce('削除を取り消しました');
+    (deleting ? $('#delete-mode') : $('#add')).focus();
+  }
 };
 $('#stop-all').onclick = () => {
   const now = Date.now(), count = running(state.timers);
@@ -167,12 +173,18 @@ async function askReset(timer) {
 }
 function remove(timer, cascade = false) {
   const before = state;
+  // Deleting several in a row should not send the keyboard back to the top each time.
+  const following = deleting ? shown.filter(t => t.id !== timer.id).slice(shown.findIndex(t => t.id === timer.id)) : [];
+  const nextId = following[0]?.id ?? shown.filter(t => t.id !== timer.id).at(-1)?.id ?? null;
   if (commit(removeItem(state, timer.id, cascade), { keepUndo: true })) {
     undoState = before;
     $('#undo-delete').hidden = false;
-    $('#undo-delete span').textContent = `「${timer.name}」を削除${timer.kind === 'set' && !cascade ? '（子は残しました）' : ''}`;
-    ui.announce('削除しました。「元に戻す」で取り消せます。');
-    $('#add').focus();
+    const kept = timer.kind === 'set' && !cascade ? '（子は残しました）' : '';
+    // The window matters: the undo disappears at the next change, so say so where it is offered.
+    $('#undo-delete span').textContent = `「${timer.name}」を削除${kept}。次の操作まで取り消せます`;
+    ui.announce(`${timer.name}を削除しました。次の操作まで元に戻せます。`);
+    if (nextId && deleting) ui.focusRow(nextId, 'delete');
+    else $('#add').focus();
   }
 }
 $('#timers').onclick = event => {
@@ -192,7 +204,13 @@ $('#timers').onclick = event => {
 };
 
 /* ---------- detail sheet ---------- */
-const sheetPosition = () => ({ index: siblingsOf(state, sheetId).findIndex(t => t.id === sheetId), count: siblingsOf(state, sheetId).length, editable: editable(), state });
+const sheetPosition = () => {
+  const siblings = siblingsOf(state, sheetId), item = find(sheetId);
+  return {
+    index: siblings.findIndex(t => t.id === sheetId), count: siblings.length, editable: editable(), state,
+    parentName: item?.parentId ? find(item.parentId)?.name ?? null : null,
+  };
+};
 function openSheetFor(id) {
   if (!find(id)) return;
   sheetId = id;
@@ -210,6 +228,15 @@ $('#sheet').addEventListener('click', async event => {
   const action = button.dataset.sheet;
   if (action === 'up' || action === 'down') {
     if (commit(moveSibling(state, timer.id, action === 'up' ? -1 : 1))) ui.announce(`${timer.name}を移動しました`);
+    return;
+  }
+  if (action === 'unparent') {
+    const parentName = find(timer.parentId)?.name ?? 'セット';
+    if (commit(editItem(state, timer.id, {}, null, Date.now()))) {
+      ui.notice(`「${timer.name}」を「${parentName}」から出しました。グループはそのままです。`);
+      ui.announce(`${timer.name}をセットから出しました`);
+      ui.closeSheet();
+    }
     return;
   }
   // The remaining actions open their own dialog or leave the row behind, so the sheet steps aside first.
@@ -336,7 +363,9 @@ $('#edit-form').onsubmit = event => {
       ui.closeEditor();
       if (created.kind === 'set') expanded.add(created.id);
       if (parentId) expanded.add(parentId);
-      render(); ui.focusRow(created.id);
+      render();
+      // A new set is empty by definition, so the next step is always the first child: land there.
+      ui.focusRow(created.id, created.kind === 'set' ? 'add-child' : 'toggle');
     }
   } else {
     const parentId = $('#edit-form').elements.parent.value || null;

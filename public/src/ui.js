@@ -10,7 +10,7 @@ function text(node, value) {
 }
 
 // Rebuild only what changed. Rows keep their identity so focus, scrolling and a drag survive an update.
-export function sync(timers, { editable, reorderable, expanded = new Set(), deleting = false, canAdd = true }) {
+export function sync(timers, { editable, reorderable, expanded = new Set(), deleting = false, canAdd = true, childCounts = new Map() }) {
   const list = $('#timers');
   // Moving a node in the DOM drops focus. Remember it so repeated key presses keep working.
   const focused = list.contains(document.activeElement) ? document.activeElement : null;
@@ -23,12 +23,13 @@ export function sync(timers, { editable, reorderable, expanded = new Set(), dele
     row.dataset.kind = t.kind;
     row.dataset.child = String(t.parentId !== null);
     const isSet = t.kind === 'set', isExpanded = expanded.has(t.id);
-    const expand = row.querySelector('[data-action="expand"]');
-    expand.hidden = !isSet;
-    expand.textContent = isExpanded ? '⌃' : '⌄';
-    expand.setAttribute('aria-label', `${t.name}の子を${isExpanded ? '折りたたむ' : '表示'}`);
-    expand.setAttribute('aria-expanded', String(isExpanded));
+    row.dataset.expanded = String(isSet && isExpanded);
     row.querySelector('.set-actions').hidden = !isSet || !isExpanded;
+    row.querySelector('.meta-kind').hidden = !isSet;
+    row.querySelector('.sum').hidden = !isSet;
+    // A set keeps the same two-line row as a timer, so the chevron rides in the name instead of
+    // taking a third control's worth of width.
+    row.querySelector('.state').hidden = isSet;
     row.querySelector('[data-action="add-child"]').disabled = !editable || !canAdd;
     const del = row.querySelector('[data-action="delete"]');
     del.hidden = !deleting;
@@ -37,7 +38,15 @@ export function sync(timers, { editable, reorderable, expanded = new Set(), dele
     const name = row.querySelector('.name');
     text(name, t.name);
     name.title = t.name; // The row shows one line; the full name stays reachable on hover.
-    row.querySelector('[data-action="open"]').setAttribute('aria-label', `${t.name}の${isSet ? '子を表示・折りたたみ' : '詳細と操作'}`);
+    const open = row.querySelector('[data-action="open"]');
+    if (isSet) {
+      const count = childCounts.get(t.id) ?? 0;
+      open.setAttribute('aria-label', `${t.name}の子${count}件を${isExpanded ? '折りたたむ' : '表示する'}`);
+      open.setAttribute('aria-expanded', String(isExpanded));
+    } else {
+      open.setAttribute('aria-label', `${t.name}の詳細と操作`);
+      open.removeAttribute('aria-expanded');
+    }
     const grip = row.querySelector('[data-action="grip"]');
     grip.hidden = deleting;
     grip.setAttribute('aria-label', `${t.name}を並べ替え。上下キーで移動できます`);
@@ -119,6 +128,7 @@ function syncStatList(list, rows) {
     const item = existing.get(row.key) ?? $('#stat-row').content.firstElementChild.cloneNode(true);
     existing.delete(row.key);
     item.dataset.key = row.key;
+    item.dataset.child = String(Boolean(row.child));
     text(item.querySelector('.stat-rank'), row.rank);
     text(item.querySelector('.stat-name'), row.name);
     text(item.querySelector('.stat-time'), row.time);
@@ -135,10 +145,32 @@ function syncStatList(list, rows) {
 }
 
 // Called only when statsTick says the visible numbers moved, so this rebuild runs at most once a second.
+// A set is listed with its children underneath instead of one run-on line, which becomes
+// unreadable as soon as a set holds more than two or three timers.
+const SET_BREAKDOWN = 3;
+function setRows(sets) {
+  const rows = [];
+  for (const set of sets) {
+    rows.push({
+      key: set.id, rank: '', name: set.name, time: format(set.totalMs), share: set.share,
+      sub: set.children.length === 0 ? '子がありません'
+        : `子 ${set.children.length}件${set.runningCount > 0 ? '・計測中あり' : ''}`,
+    });
+    for (const child of set.children.slice(0, SET_BREAKDOWN)) {
+      rows.push({
+        key: `${set.id}:${child.id}`, child: true, rank: '', name: child.name,
+        time: format(child.ms), share: child.share, sub: child.running ? '計測中' : '',
+      });
+    }
+    const rest = set.children.length - SET_BREAKDOWN;
+    if (rest > 0) rows.push({ key: `${set.id}:rest`, child: true, rank: '', name: `ほか${rest}件`, time: '', share: 0, sub: '' });
+  }
+  return rows;
+}
+
 export function paintStats(summary) {
   $('#stat-set-block').hidden = summary.sets.length === 0;
-  syncStatList($('#stat-sets'), summary.sets.map(row => ({ key: row.id, rank: '', name: row.name,
-    time: format(row.totalMs), share: row.share, sub: row.children.map(c => `${c.name} ${format(c.ms)}`).join(' / ') || '子がありません' })));
+  syncStatList($('#stat-sets'), setRows(summary.sets));
   text($('#stat-total'), format(summary.totalMs));
   text($('#stat-running'), `${summary.runningCount} / ${summary.timerCount}`);
   const empty = summary.timerCount === 0;
@@ -258,13 +290,19 @@ export function openSheet() {
   $('#sheet').showModal();
   $('#sheet-toggle').focus();
 }
-export function paintSheet(timer, now, { index, count, editable, state }) {
+export function paintSheet(timer, now, { index, count, editable, state, parentName = null }) {
   if (!$('#sheet').open || !timer) return;
   const ms = elapsed(timer, now), isRunning = timer.startedAt !== null;
   text($('#sheet-title'), timer.name);
   text($('#sheet-time'), format(ms));
   text($('#sheet-toggle'), isRunning ? '■ 停止' : '▶ 開始');
-  text($('#sheet-group'), `グループ：${groupName(state, timer.groupId)}`);
+  text($('#sheet-group'), parentName === null
+    ? `グループ：${groupName(state, timer.groupId)}`
+    : `セット：${parentName}／グループ：${groupName(state, timer.groupId)}`);
+  // Taking a timer out of its set is the common tidy-up, so it gets one button instead of the editor.
+  const unparent = $('[data-sheet="unparent"]');
+  unparent.hidden = parentName === null;
+  unparent.disabled = !editable;
   text($('#sheet-goal'), timer.targetMs > 0 ? sheetGoal(timer, ms) : '');
   text($('#sheet-memo'), timer.memo);
   $('#sheet-toggle').disabled = !editable;

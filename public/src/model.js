@@ -170,8 +170,11 @@ export function viewItem(state, item, now) {
   if (!item || item.kind !== 'set') return item;
   const children = childrenOf(state, item.id), active = children.find(t => t.startedAt !== null);
   const previous = children.find(t => t.id === item.lastChildId);
-  return { ...item, aggregateMs: total(children, now), startedAt: active?.startedAt ?? null,
-    childNote: active ? `計測中: ${active.name}` : previous ? `前回: ${previous.name}` : `${children.length}件・子を選択` };
+  // The row hides its own state chip for a set, so this note carries the state in words.
+  const childNote = active ? `計測中 ${active.name}`
+    : previous ? `前回 ${previous.name}`
+    : children.length > 0 ? `子 ${children.length}件` : '子がありません';
+  return { ...item, aggregateMs: total(children, now), startedAt: active?.startedAt ?? null, childCount: children.length, childNote };
 }
 export function toggleItem(state, id, now) {
   const item = state.timers.find(t => t.id === id);

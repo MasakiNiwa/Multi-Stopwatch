@@ -50,7 +50,16 @@ export function summarize(state, now) {
   const sets = state.timers.filter(t => t.kind === 'set').map(parent => {
     const children = timers.filter(t => t.parentId === parent.id);
     const ms = total(children, now);
-    return { id: parent.id, name: parent.name, totalMs: ms, share: share(ms), children: children.map(t => ({ name: t.name, ms: elapsed(t, now) })) };
+    // Each child also carries its share of its own set, so a breakdown adds up to 100% on its own.
+    const inSet = childMs => (ms > 0 ? childMs / ms : 0);
+    return {
+      id: parent.id, name: parent.name, totalMs: ms, share: share(ms),
+      runningCount: running(children),
+      children: children
+        .map(t => ({ id: t.id, name: t.name, ms: elapsed(t, now), running: t.startedAt !== null }))
+        .sort((a, b) => b.ms - a.ms)
+        .map(child => ({ ...child, share: inSet(child.ms) })),
+    };
   }).sort((a, b) => b.totalMs - a.totalMs);
   return { totalMs, runningCount: running(timers), timerCount: timers.length, groups, ranking, sets };
 }

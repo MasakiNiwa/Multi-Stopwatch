@@ -314,6 +314,8 @@ const v1Record = {
   await setsPage.locator('#add-set').click();
   await setsPage.locator('#edit-form [name=name]').fill('資格勉強');
   await setsPage.getByRole('button', {name:'保存',exact:true}).click();
+  // v0.8: a new set is empty, so the keyboard lands on 「＋ 子を追加」 rather than the set's own toggle.
+  await setsPage.waitForFunction(() => document.activeElement?.dataset.action === 'add-child', null, { timeout: 2000 });
   await addChild('テキスト'); await addChild('問題演習');
   await setsPage.getByRole('button', {name:'テキストを開始',exact:true}).click();
   await setsPage.getByRole('button', {name:'問題演習を開始',exact:true}).click();
@@ -324,12 +326,26 @@ const v1Record = {
   await setsPage.getByRole('button', {name:'資格勉強を停止',exact:true}).click();
   await setsPage.getByRole('button', {name:'資格勉強を開始',exact:true}).click();
   assert.notEqual((await record()).timers.find(t=>t.name==='問題演習').startedAt, null);
-  await setsPage.locator('[data-action=expand]:visible').click();
+  // v0.8: the set row carries its own disclosure, so it keeps a timer row's controls and height.
+  const setRow = setsPage.locator('.card[data-kind=set]');
+  assert.equal(await setsPage.locator('[data-action=expand]').count(), 0, '専用の展開ボタンは廃止');
+  assert.equal(await setRow.locator('[data-action=open]').getAttribute('aria-expanded'), 'true');
+  await setRow.locator('[data-action=open]').click();
   assert.equal(await setsPage.locator('.card').count(),1);
+  assert.equal(await setRow.locator('[data-action=open]').getAttribute('aria-expanded'), 'false');
   await setsPage.reload(); await ready(setsPage);
   assert.equal(await setsPage.locator('.card').count(),1);
-  await setsPage.locator('[data-action=expand]:visible').click();
+  await setRow.locator('[data-action=open]').click();
   assert.equal(await setsPage.locator('.card').count(),3);
+  // The row proper, without the actions an expanded set adds underneath it.
+  const heights = await setsPage.evaluate(() => ({
+    set: Math.round(document.querySelector('.card[data-kind=set] > .row').getBoundingClientRect().height),
+    timer: Math.round(document.querySelector('.card[data-kind=timer] > .row').getBoundingClientRect().height),
+  }));
+  assert.equal(heights.set, heights.timer, `セット行 ${heights.set}px と通常行 ${heights.timer}px の高さが揃っていない`);
+  assert.equal(await setRow.locator('.meta-kind').textContent(), 'セット');
+  assert.equal(await setRow.locator('.sum').isVisible(), true, '合計であることを示す印');
+  assert.equal(await setRow.locator('.state').isVisible(), false, '状態は注記が言葉で伝える');
   await setsPage.locator('#stop-all').click();
   await setsPage.screenshot({ path:'test-results/visual/sets-light.png',fullPage:true });
   await setsPage.locator('#theme-toggle').click();
@@ -337,8 +353,14 @@ const v1Record = {
   await setsPage.screenshot({ path:'test-results/visual/sets-dark.png',fullPage:true });
   await setsPage.locator('#tab-stats').click();
   assert.equal(await setsPage.locator('#stat-ranking .stat-item').count(),2);
-  assert.equal(await setsPage.locator('#stat-sets .stat-item').count(),1);
-  assert.equal(await setsPage.locator('#stat-total').textContent(),await setsPage.locator('#stat-sets .stat-time').textContent());
+  // v0.8: a set is listed with its children under it instead of one run-on line.
+  assert.equal(await setsPage.locator('#stat-sets .stat-item').count(),3, 'セット1行＋子2行');
+  assert.equal(await setsPage.locator('#stat-sets .stat-item[data-child=false]').count(),1);
+  assert.deepEqual(await setsPage.$$eval('#stat-sets .stat-item[data-child=true] .stat-name', xs=>xs.map(x=>x.textContent)).then(xs=>xs.sort()), ['テキスト','問題演習']);
+  assert.equal(await setsPage.locator('#stat-total').textContent(),await setsPage.locator('#stat-sets .stat-item[data-child=false] .stat-time').textContent());
+  // Children's shares are relative to their own set, so a breakdown adds up on its own.
+  const breakdown = await setsPage.$$eval('#stat-sets .stat-item[data-child=true] .stat-share', xs=>xs.map(x=>parseInt(x.textContent,10)));
+  assert.equal(breakdown.reduce((a,b)=>a+b,0) >= 99, true, `子の割合合計 ${breakdown}`);
   await setsPage.locator('#tab-timers').click();
   // Direct delete and undo preserve the complete family and running state.
   await setsPage.locator('#delete-mode').click();
@@ -353,11 +375,27 @@ const v1Record = {
   await setsPage.getByRole('button',{name:'テキストを削除',exact:true}).click();
   await setsPage.getByRole('button',{name:'問題演習を開始',exact:true}).click();
   assert.equal(await setsPage.locator('#undo-delete').isVisible(),false,'a subsequent record change invalidates undo');
+  // v0.8: deleting several in a row keeps the keyboard on the list instead of the toolbar.
+  await setsPage.getByRole('button',{name:'問題演習を削除',exact:true}).click();
+  // Focus moves on the next frame, after the list has been rebuilt.
+  await setsPage.waitForFunction(() => document.activeElement?.dataset.action === 'delete', null, { timeout: 2000 });
+  assert.match(await setsPage.locator('#undo-delete span').textContent(),/次の操作まで/,'取り消せる期間を伝えること');
+  await setsPage.locator('#undo').click();
   await setsPage.locator('#delete-mode').click();
+  // v0.8: one tap takes a child out of its set, without going through the editor.
+  await openSheet(setsPage,'問題演習');
+  assert.match(await setsPage.locator('#sheet-group').textContent(),/セット：資格勉強/);
+  await setsPage.getByRole('button',{name:'セットから出す',exact:true}).click();
+  assert.equal((await record()).timers.find(t=>t.name==='問題演習').parentId,null);
+  assert.equal((await record()).timers.find(t=>t.kind==='set').lastChildId,null);
+  await openSheet(setsPage,'問題演習');
+  assert.equal(await setsPage.locator('[data-sheet=unparent]').isVisible(),false,'単独の計測には出さない');
+  await setsPage.locator('#sheet-close').click();
+  await setsPage.locator('#undo-delete').isVisible();
   // Editing a child can detach it; the old parent no longer resumes a foreign child.
   await openSheet(setsPage,'問題演習');
   await setsPage.getByRole('button',{name:'編集',exact:true}).click();
-  await setsPage.locator('#edit-form [name=parent]').selectOption('');
+  assert.equal(await setsPage.locator('#edit-form [name=parent]').inputValue(),'','出したあとは所属なしで開く');
   await setsPage.getByRole('button',{name:'保存',exact:true}).click();
   assert.equal((await record()).timers.find(t=>t.kind==='set').lastChildId,null);
   await setsPage.locator('#stop-all').click();
@@ -393,13 +431,35 @@ const v1Record = {
     const r=row.getBoundingClientRect(), bottom=document.querySelector('.toolbar').getBoundingClientRect().top;
     return r.top>=0 && r.bottom<=bottom;
   }).length);
-  assert.ok(parentDensity>=4,`only ${parentDensity} collapsed parents visible`);
+  assert.ok(parentDensity>=5,`only ${parentDensity} collapsed parents visible`);
   await setsPage.locator('#filter').fill('演習 3-2');
   assert.deepEqual(await names(setsPage),['資格勉強 3','演習 3-2']);
   await setsPage.locator('#filter').fill('');
   await setsPage.screenshot({path:'test-results/visual/sets-dense.png',fullPage:true});
+  // v0.8: the documented ceiling, 20 sets and 100 timers, has to load, sort and cap the add buttons.
+  await setsPage.evaluate(() => {
+    const timers = [];
+    for (let p=0;p<20;p++) {
+      timers.push({id:`s${p}`,kind:'set',parentId:null,name:`セット${p}`,memo:'',color:'blue',groupId:null,targetMs:0,lastChildId:null});
+      for (let c=0;c<5;c++) timers.push({id:`c${p}-${c}`,kind:'timer',parentId:`s${p}`,name:`子 ${p}-${c}`,memo:'',color:'blue',groupId:null,targetMs:0,elapsedMs:(p*5+c)*60000,startedAt:null});
+    }
+    localStorage.setItem('multi-stopwatch:state:v1',JSON.stringify({version:3,timers,groups:[]}));
+  });
+  await setsPage.reload(); await ready(setsPage);
+  assert.equal(await setsPage.locator('.card').count(),20);
+  assert.equal(await setsPage.locator('#add').isDisabled(),true,'100計測で追加を止めること');
+  assert.equal(await setsPage.locator('#add-set').isDisabled(),true,'20セットで追加を止めること');
+  await setsPage.locator('#sort').selectOption({index:1});
+  await setsPage.locator('#apply-sort').click();
+  assert.equal((await record()).timers.filter(t=>t.parentId!==null).length,100,'並べ替えが親子を壊さないこと');
+  await setsPage.locator('#tab-stats').click();
+  // Every set keeps a bounded breakdown: one parent row plus at most three children and a remainder.
+  assert.equal(await setsPage.locator('#stat-sets .stat-item[data-child=false]').count(),20);
+  assert.equal(await setsPage.locator('#stat-sets .stat-item[data-child=true]').count(),20*4);
+  assert.equal(await setsPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'20セットの統計で横スクロールなし');
+  await setsPage.locator('#tab-timers').click();
   assert.deepEqual(errors,[]);
   await setsContext.close();
   await browser.close();
-  console.log(`PASS: v1→v3 migration, groups, statistics, sorting, compact list (${density} rows, ${smallest}px targets), theme, help, icons, offline; sets, exclusive switch, resume, undo, detach, 10-set/50-timer density, search and writer lock`);
+  console.log(`PASS: v1→v3 migration, groups, statistics, sorting, compact list (${density} rows, ${smallest}px targets), theme, help, icons, offline; sets, exclusive switch, resume, undo, detach, 10-set/50-timer density, 20-set/100-timer ceiling, search and writer lock`);
 })().catch(error => { console.error(error); process.exit(1); });
