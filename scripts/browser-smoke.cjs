@@ -18,8 +18,7 @@ const base = process.env.PREVIEW_URL || 'http://127.0.0.1:8080/Multi-Stopwatch/'
   await page.locator('[name=targetH]').fill('20');
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.getByRole('button', { name: '資格の勉強を開始' }).click();
-  await page.waitForTimeout(1050);
-  assert.notEqual(await page.locator('.time .sr-only').textContent(), '0時間0分0秒');
+  await page.locator('.time .sr-only').filter({ hasNotText: '0時間0分0秒' }).waitFor({ timeout: 3000 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: 'test-results/visual/mobile-light.png', fullPage: true });
   await page.emulateMedia({ colorScheme: 'dark' });
